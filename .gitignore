@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# (why is this even here, I don't even got money to pay for AI and its not doing anything...)
+AGENTS.md
+CLAUDE.md
