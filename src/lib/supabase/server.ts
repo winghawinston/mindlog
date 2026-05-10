@@ -1,6 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+
 // This client runs on the server.
 // Must read cookies to access the user's session token.
 // Cannot be used in Client Components — no access to browser APIs.
@@ -8,8 +12,8 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl!,
+    supabaseKey!,
     {
       cookies: {
         getAll() {
