@@ -1,6 +1,93 @@
 @import "tailwindcss";
 
-:root {
+/* 
+  ============================================================
+   DESIGN TOKENS
+   Defined once here, available everywhere as Tailwind utilities
+   and CSS variables. Tailwind v4 reads @theme and generates
+   utility classes automatically — e.g. bg-forest, text-sage.
+  ============================================================ 
+*/
+
+.ab {
+  color: oklch(74.989% 0.08538 82.074)
+}
+@theme {
+  /* Brand palette */
+  --color-forest:       oklch(47.584% 0.07767 162.2); /* #2d6a4f */
+  --color-forest-dark:  oklch(52.959% 0.08006 160.541); /* #3d7a5c */
+  --color-sage:         oklch(70.642% 0.11823 160.924); /* #52b788 */
+  --color-mint:         oklch(93.826% 0.04171 149.716); /* #d8f3dc */
+  --color-sand:         oklch(74.989% 0.08538 82.074); /* #c9a96e */
+
+  /* Light mode surfaces */
+  --color-linen:        oklch(96.731% 0.00686 88.609); /* #f5f3ee */
+  --color-parchment:    oklch(89.794% 0.0099 87.445); /* #e0ddd6 */
+  --color-white:        oklch(100% 0.00011 271.152); /* #ffffff */
+
+  /* Dark mode surfaces */
+  --color-dark-bg:      oklch(19.044% 0.00393 106.86); /* #141412 */
+  --color-dark-surface: oklch(22.567% 0.00377 106.81); /* #1c1c1a */
+  --color-dark-raised:  oklch(26.372% 0.00363 106.78); /* #252523 */
+  --color-dark-border:  oklch(31.606% 0.0052 106.807); /* #333330 */
+
+  /* Ink / text */
+  --color-ink:          oklch(22.567% 0.00377 106.81); /* #1c1c1a */
+  --color-ink-muted:    oklch(51.753% 0.01282 89.802); /* #6b6860 */
+  --color-ink-subtle:   oklch(68.07% 0.01239 84.554); /* #9c9890 */
+
+  /* Semantic */
+  --color-danger:       oklch(55.647% 0.16203 27.641); /* #c0433a */
+  --color-warning:      oklch(71.76% 0.13785 75.58); /* #d4952a */
+  --color-info:         oklch(67.036% 0.10782 247.084); /* #5b9bd4 */
+
+  /* Typography */
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+}
+
+/* ============================================================
+   BASE STYLES
+   Applied globally. Dark mode uses .dark class on <html>.
+   ============================================================ */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-linen);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Dark mode body */
+  .dark body {
+    background-color: var(--color-dark-bg);
+    color: #f0ede8;
+  }
+
+  /* Focus ring — consistent across all interactive elements */
+  *:focus-visible {
+    outline: 2px solid var(--color-forest);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .dark *:focus-visible {
+    outline-color: var(--color-sage);
+  }
+}
+
+/* :root {
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -23,4 +110,4 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
+} */
