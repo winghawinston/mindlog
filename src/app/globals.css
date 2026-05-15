@@ -10,7 +10,7 @@
 */
 
 .ab {
-  color: oklch(74.989% 0.08538 82.074)
+  color: oklch(22.567% 0.00377 106.81)
 }
 @theme {
   /* Brand palette */
@@ -84,6 +84,38 @@
 
   .dark *:focus-visible {
     outline-color: var(--color-sage);
+  }
+
+  /* ============================================================
+    AUTOFILL OVERRIDE
+    Browsers hijack background-color on autofilled inputs.
+    The only reliable fix is an inset box-shadow large enough
+    to cover the entire input, visually replacing the browser's
+    forced background color. background-color itself is ignored.
+  ============================================================== */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    /* light mode: cover with white */
+    -webkit-box-shadow: 0 0 0px 1000px var(--color-white) inset !important;
+    -webkit-text-fill-color: var(--color-ink) !important;
+    /* Delay the browser's own transition so our shadow wins */
+    transition: background-color 500000s ease-in-out 0s;
+    caret-color: var(--color-ink);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active  {
+      /* dark mode: cover with dark surface color */
+      -webkit-box-shadow: 0 0 0px 1000px var(--color-dark-surface) inset !important;
+      -webkit-text-fill-color: #d8d5ce !important;
+      transition: background-color 500000s ease-in-out 0s;
+      caret-color: #d8d5ce;
+    }
   }
 }
 
