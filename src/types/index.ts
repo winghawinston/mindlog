@@ -9,9 +9,16 @@
 // Used to pass error/success state back from Server Actions
 // to Client Components via useActionState.
 // ------------------------------------------------------------
+// CHANGED: added requiresOtp, requiresMfa, email fields.
+// WHY: Server Actions can only communicate back to Client
+// Components via their return value. These fields act as
+// "signals" — the page reads them to decide which UI step
+// to show next, without the server redirecting prematurely.
 export interface ActionState {
   error?: string;
   success?: string;
+  requiresOtp?: boolean;   // signals signup page to show OTP input step
+  requiresMfa?: boolean;   // signals login page to show TOTP challenge step
 }
 
 // ------------------------------------------------------------
@@ -23,6 +30,7 @@ export interface Profile {
   id: string;
   username: string | null;
   avatar_url: string | null;
+  mfa_enabled: boolean;      // CHANGED: added — tracks optional MFA enrollment
   created_at: string;
   updated_at: string;
 }
