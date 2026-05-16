@@ -13,28 +13,64 @@
 // authenticator app code, which verifyMfaAction validates.
 
 import type { ActionState } from "@/types";
-import { useActionState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { loginAction, verifyMfaAction } from "../actions";
 import { Input } from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
 import { OtpInput } from "@/components/ui/OtpInput";
 
-const initialState: ActionState = {};
+type LoginStep =  "form" | "mfa";
 
 export default function LoginPage() {
-  const [loginState, loginFormAction, isLoginPending] = useActionState(
-    loginAction,
-    initialState
-  );
+  const [step, setStep] = useState<LoginStep>("form");
 
-  const [mfaState, mfaFormAction, isMfaPending] = useActionState(
-    verifyMfaAction,
-    initialState
-  );
+  const [formError, setFormError] = useState<string | null>(null);
+  const [mfaError, setMfaError] = useState<string | null>(null);
 
-  // show MFA step if login succeeded but user has MFA enrolled
-  const showMfaStep = loginState.requiresMfa === true;
+  const [isPending, startTransition] = useTransition();
+
+  const handleLoginSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
+    // IMPORTANT: prevent the browser's native form submission.
+    // Without this, the browser would try to POST the form itself,
+    // bypassing our server action entirely.
+    e.preventDefault();
+    setFormError(null); // clear previous errors
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result: ActionState = await loginAction({}, formData);
+
+      if (result?.error) {
+        setFormError(result.error);
+        return;
+      }
+
+      if (result?.requiresMfa) {
+        setStep("mfa");
+        return;
+      }
+
+      // no error, no MFA = loginAction called redirect("/dashboard")
+    });
+  }
+
+  const handleMfaSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMfaError(null);
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result: ActionState = await verifyMfaAction({}, formData);
+
+      if (result?.error) {
+        setMfaError(result.error);
+      }
+      // no error = verifyMfaAction called redirect("/dashboard")
+    });
+  };
 
   return (
     <div className="">
@@ -59,7 +95,7 @@ export default function LoginPage() {
           </svg>
         </div>
 
-        {showMfaStep ? (
+        {step === "mfa" ? (
           <>
             <h1 className="text-2xl font-medium text-ink dark:text-[#f0ede8]">
               Two-factor authentication
@@ -83,23 +119,20 @@ export default function LoginPage() {
       {/* card */}
       <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-6 shadow-none">
         {/* step 1: password login */}
-        {!showMfaStep && (
+        {step === "form" && (
           <>
-            {loginState.error && (
+            {formError && (
               <div
                 className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#edaaa6] dark:border-[#5a2020]"
                 role="alert"
               >
                 <p className="text-sm text-danger dark:text-[#e87070]">
-                  {loginState.error}
+                  {formError}
                 </p>
               </div>
             )}
 
-            {/* form action={formAction} is the Server Action pattern.
-                When the form submits, Next.js serializes the FormData
-                and sends it to the server action — no fetch() needed. */}
-            <form action={loginFormAction} className="flex flex-col gap-4" noValidate>
+            <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4" noValidate>
               <Input
                 label="Email address"
                 name="email"
@@ -122,43 +155,40 @@ export default function LoginPage() {
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isLoginPending}
+                isLoading={isPending}
                 className="w-full mt-2"
               >
-                {isLoginPending ? "Signing in…" : "Sign in"}
+                {isPending ? "Signing in…" : "Sign in"}
               </Button>
             </form>
           </>
         )}
 
         {/* step 2: MFA TOTP challenge */}
-        {showMfaStep && (
+        {step === "mfa" && (
           <>
-            {mfaState.error && (
+            {mfaError && (
               <div
                 className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#edaaa6] dark:border-[#5a2020]"
                 role="alert"
               >
                 <p className="text-sm text-danger dark:text-[#e87070]">
-                  {mfaState.error}
+                  {mfaError}
                 </p>
               </div>
             )}
 
-            <form action={mfaFormAction} className="flex flex-col items-center gap-5">
-              <OtpInput
-                name="code"
-                disabled={isMfaPending}
-              />
+            <form onSubmit={handleMfaSubmit} className="flex flex-col items-center gap-5">
+              <OtpInput name="code" disabled={isPending} />
 
               <Button
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isMfaPending}
+                isLoading={isPending}
                 className="w-full"
               >
-                {isMfaPending ? "Verifying…" : "Verify"}
+                {isPending ? "Verifying…" : "Verify"}
               </Button>
             </form>
 
@@ -170,7 +200,7 @@ export default function LoginPage() {
       </div>
 
       {/* switch to signup */}
-      {!showMfaStep && (
+      {step === "form" && (
         <p className="mt-5 text-center text-sm text-ink-muted dark:text-[#888480]">
           Don&apos;t have an account?{" "}
           <Link

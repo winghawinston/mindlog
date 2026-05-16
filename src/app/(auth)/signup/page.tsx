@@ -9,7 +9,16 @@
 // whether to show the OTP step. otpActionState carries OTP errors/success.
 // resendActionState carries the resend feedback independently.
 
-import { useActionState, useState } from "react";
+// CHANGED: replaced useActionState with useTransition for all steps.
+// WHY: signup is a multi-step flow (form → OTP → redirect). useActionState
+// is designed for single-step forms. useTransition gives us direct control
+// over when and how each server action is called — same pattern as onboarding.
+//
+// FIXED: removed `form action={customFunction}` — that pattern is only valid
+// for direct Server Actions. Client-side logic before submission must use
+// `form onSubmit` with event.preventDefault() instead.
+
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { resendOtpAction, signupAction, verifySignupOtpAction } from "../actions";
 import Button from "@/components/ui/Button";
@@ -17,42 +26,89 @@ import { Input } from "@/components/ui/Input";
 import type { ActionState } from "@/types";
 import { OtpInput } from "@/components/ui/OtpInput";
 
-const initialState: ActionState = {};
+type SignupStep = "form" | "otp";
 
 export default function SignupPage() {
-  // tracks signup form submission state
-  const [signupState, signupFormAction, isSignupPending] = useActionState(
-    signupAction,
-    initialState
-  );
-
-  // tracks OTP verification state
-  const [otpState, otpFormAction, isOtpPending] = useActionState(
-    verifySignupOtpAction,
-    initialState
-  );
-
-  // tracks resend OTP state
-  const [resendState, resendFormAction, isResendPending] = useActionState(
-    resendOtpAction,
-    initialState
-  );
+  const [step, setStep] = useState<SignupStep>("form");
 
   // We store the email locally so we can:
   //   1. Pass it as a hidden input to the OTP verification form
   //   2. Display it in the "check your inbox at X" message
   const [submittedEmail, setSubmittedEmail] = useState("");
 
-  // intercept the signup form submission to capture the email
-  // before passing FormData to the action
-  const handleSignupSubmit = (formData: FormData) => {
+  // seperate error states for each action, since they can fail independently
+  // and they surface in different parts of the UI
+  const [formError, setFormError] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendMessage, setResendMessage] = useState<{
+  type: "success" | "error";
+  text: string;
+  } | null>(null);
+
+  // isPending covers ALL async transitions — one flag is enough because
+  // only one action can be pending at a time (can't submit OTP while signing up, etc.)
+  const [isPending, startTransition] = useTransition();
+
+  // step 1: submit signup form
+  const handleSignupSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
+    // IMPORTANT: prevent the browser's native form submission.
+    // Without this, the browser would try to POST the form itself,
+    // bypassing our server action entirely.
+    e.preventDefault();
+    setFormError(null);
+
+    const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
-    setSubmittedEmail(email.trim().toLowerCase());
-    signupFormAction(formData);
+
+    startTransition(async () => {
+      const result: ActionState = await signupAction({}, formData);
+
+      if (result?.error) {
+        setFormError(result.error);
+        return;
+      }
+
+      // no error = supabase sent the OTP email, so we can move to the next step
+      setSubmittedEmail(email.trim().toLowerCase());
+      setStep("otp");
+    });
   }
 
-  // show OTP step if signup succeeded (requiresOtp signal from server)
-  const showOtpStep = signupState.requiresOtp === true;
+  // step 2: verify OTP
+  const handleOtpSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setOtpError(null);
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result: ActionState = await verifySignupOtpAction({}, formData);
+
+      if (result?.error) {
+        setOtpError(result.error);
+      }
+      // No error = verifySignupOtpAction called redirect("/onboarding")
+      // The page navigates automatically — nothing more needed here
+    });
+  };
+
+  // resend OTP
+  const handleResend = (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setResendMessage(null);
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result: ActionState = await resendOtpAction({}, formData);
+
+      setResendMessage(
+        result?.error
+          ? { type: "error", text: result.error }
+          : { type: "success", text: "A new code has been sent." }
+      );
+    });
+  };
 
   return (
     <div>
@@ -76,7 +132,7 @@ export default function SignupPage() {
           </svg>
         </div>
 
-        {showOtpStep ? (
+        {step === "otp" ? (
           <>
             <h1 className="text-2xl font-medium text-ink dark:text-[#F0EDE8]">
               Check your email
@@ -103,20 +159,21 @@ export default function SignupPage() {
       {/* card */}
       <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-6">
         {/* step 1: signup form */}
-        {!showOtpStep && (
+        {step === "form" && (
           <>
-            {signupState.error && (
+            {formError && (
               <div
-                className="mb-4 px-3 py-2.5 rounded-lg bg-[#FCECEA] dark:bg-[#2a1414] border border-[#EDAAA6] dark:border-[#5a2020]"
+                className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#EDAAA6] dark:border-[#5a2020]"
                 role="alert"
               >
                 <p className="text-sm text-danger dark:text-[#e87070]">
-                  {signupState.error}
+                  {formError}
                 </p>
               </div>
             )}
 
-            <form action={handleSignupSubmit} className="flex flex-col gap-4" noValidate>
+            {/* on submit — correct pattern for client logic before server action */}
+            <form onSubmit={handleSignupSubmit} className="flex flex-col gap-4" noValidate>
               <Input
                 label="Email address"
                 name="email"
@@ -149,10 +206,10 @@ export default function SignupPage() {
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isSignupPending}
+                isLoading={isPending}
                 className="w-full mt-2"
               >
-                {isSignupPending ? "Creating account…" : "Create account"}
+                {isPending ? "Creating account…" : "Create account"}
               </Button>
             </form>
 
@@ -164,35 +221,23 @@ export default function SignupPage() {
           </>
         )}
         
-        {/* step 2: otp verification */}
-        {showOtpStep && (
+        {/* step 2: OTP verification */}
+        {step === "otp" && (
           <>
             {/* OTP error */}
-            {otpState.error && (
+            {otpError && (
               <div
                 className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#edaaa6] dark:border-[#5a2020]"
                 role="alert"
               >
                 <p className="text-sm text-danger dark:text-[#e87070]">
-                  {otpState.error}
-                </p>
-              </div>
-            )}
-
-            {/* resend success */}
-            {resendState.success && (
-              <div
-                className="mb-4 px-3 py-2.5 rounded-lg bg-[#eef5e8] dark:bg-[#1a2e1e] border border-[#b8dda8] dark:border-[#2a5a30]"
-                role="status"
-              >
-                <p className="text-sm text-[#3B6D11] dark:text-[#6dbf82]">
-                  {resendState.success}
+                  {otpError}
                 </p>
               </div>
             )}
 
             {/* OTP form — hidden email + OTP input boxes */}
-            <form action={otpFormAction} className="flex flex-col items-center gap-5">
+            <form onSubmit={handleOtpSubmit} className="flex flex-col items-center gap-5">
               {/*
                 * Hidden input carries the email to the server action.
                 * The user already proved they own this email address
@@ -200,35 +245,48 @@ export default function SignupPage() {
                 */}
               <input type="hidden" name="email" value={submittedEmail} />
 
-              <OtpInput
-                name="token"
-                disabled={isOtpPending}
-              />
+              <OtpInput name="token" disabled={isPending} />
 
               <Button
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isOtpPending}
+                isLoading={isPending}
                 className="w-full"
               >
-                {isOtpPending ? "Verifying…" : "Verify email"}
+                {isPending ? "Verifying…" : "Verify email"}
               </Button>
             </form>
 
-            {/* resend form — separate form, separate action */}
-            <form action={resendFormAction} className="mt-4 text-center">
-              <input type="hidden" name="email" value={submittedEmail} />
+            {/* resend — seperate form so it doesn't submit the OTP form */}
+            <form onSubmit={handleResend} className="mt-4 text-center">
+                <input type="hidden" name="email" value={submittedEmail} />
+
+                {resendMessage && (
+                <p
+                  className={`text-xs mb-2 ${
+                    resendMessage.type === "success"
+                      ? "text-[#3b6d11] dark:text-[#6dbf82]"
+                      : "text-danger"
+                  }`}
+                >
+                  {resendMessage.text}
+                </p>
+              )}
+
+              {/* resend form — separate form */}
               <p className="text-xs text-ink-subtle dark:text-[#555250] mb-1">
                 Didn&apos;t receive it?
               </p>
+
               <Button
                 type="submit"
                 variant="ghost"
                 size="sm"
-                isLoading={isResendPending}
+                isLoading={isPending}
               >
-                {isResendPending ? "Sending…" : "Resend code"}
+                {/* {isPending ? "Sending…" : "Resend code"} */}
+                Resend code
               </Button>
             </form>
           </>
@@ -237,7 +295,7 @@ export default function SignupPage() {
 
 
       {/* switch to login */}
-      {!showOtpStep && (
+      {step === "form" && (
         <p className="mt-5 text-center text-sm text-ink-muted dark:text-[#888480]">
           Already have an account?{" "}
           <Link
