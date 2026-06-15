@@ -104,6 +104,8 @@ export function OtpInput({
             type="text"
             inputMode="numeric"
             maxLength={1}
+            // change to off to prevent browser autofill
+            autoComplete="one-time-code" // changes keyboard on mobile to show numbers and may trigger OTP autofill
             value={values}
             disabled={disabled}
             // we handle input ourselves to control auto-advancing and pasting behavior
@@ -120,7 +122,7 @@ export function OtpInput({
               values 
                 ? "border-forest dark:border-sage" // filled box gets accent border
                 : "border-parchment dark:border-dark-border", // empty box gets default
-              "focus:border-forest focus: outline-none ring-0",
+              "focus:border-forest focus:outline-none ring-0",
               "dark:focus:border-sage",
               "disabled:opacity-50 disabled:cursor-not-allowed"
             )}

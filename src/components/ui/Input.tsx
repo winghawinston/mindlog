@@ -42,6 +42,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             type={resolvedType}
+            autoComplete="off" // prevents the browser from suggesting past emails or passwords, which can interfere with our custom UI and styling. ps: it did. don't ask.
             className={cn(
               // Light mode: white field on linen background — softer contrast
               "w-full h-10 px-3 text-sm rounded-lg",
