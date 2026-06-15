@@ -177,23 +177,31 @@ export async function signupAction(
 
   const supabase =  await createClient();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
     // no emailRedirectTo — we're using OTP verification instead of email links, so the user stays in the app and doesn't lose session context
     // the user will enter the code manually in-app
   });
     
-  
+  // handle actual system errors first
   if (error) {
     // "User already registered" is the Supabase message for duplicate email
     // ADDED: same pattern — real error in your terminal, safe message to user
     console.error("[signup] Supabase error:", error.message, "| code:", error.status);
 
-    if (error.message.includes("already registered")) {
+    // When "Confirm Email" is OFF, Supabase sends a 422 error for duplicates
+    if (error.message.includes("already registered") || error.status === 422) {
       return { error: "An account with this email already exists." };
     }
     return { error: "Could not create account. Please try again." };
+  }
+
+  // ADDED: detect existing email without Supabase returning an error.
+  // When email already exists with confirmation ON, Supabase returns
+  // success but data.user.identities is an empty array.
+  if (data.user && data.user.identities?.length === 0) {
+    return { error: "An account with this email already exists. Please sign in instead." };
   }
 
   // signal the page to show the OTP input step.

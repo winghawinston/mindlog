@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
 import { OtpInput } from "@/components/ui/OtpInput";
+import { Card } from "@/components/ui/Card";
 
 type LoginStep =  "form" | "mfa";
 
@@ -117,7 +118,7 @@ export default function LoginPage() {
       </div>
 
       {/* card */}
-      <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-6 shadow-none">
+      <Card className="shadow-none">
         {/* step 1: password login */}
         {step === "form" && (
           <>
@@ -197,7 +198,7 @@ export default function LoginPage() {
             </p>
           </>
         )}
-      </div>
+      </Card>
 
       {/* switch to signup */}
       {step === "form" && (

@@ -25,6 +25,7 @@ import Button from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { ActionState } from "@/types";
 import { OtpInput } from "@/components/ui/OtpInput";
+import { Card } from "@/components/ui/Card";
 
 type SignupStep = "form" | "otp";
 
@@ -41,13 +42,17 @@ export default function SignupPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<{
-  type: "success" | "error";
-  text: string;
+    type: "success" | "error";
+    text: string;
   } | null>(null);
 
-  // isPending covers ALL async transitions — one flag is enough because
-  // only one action can be pending at a time (can't submit OTP while signing up, etc.)
-  const [isPending, startTransition] = useTransition();
+  // CHANGED: split into three independent transitions.
+  // WHY: the OTP step renders two buttons (Verify, Resend) at once.
+  // A shared isPending makes clicking one show loading on the other —
+  // same bug class as the onboarding Save/Skip buttons.
+  const [isFormPending, startFormTransition]   = useTransition();
+  const [isOtpPending, startOtpTransition]     = useTransition();
+  const [isResendPending, startResendTransition] = useTransition();
 
   // step 1: submit signup form
   const handleSignupSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
@@ -58,9 +63,9 @@ export default function SignupPage() {
     setFormError(null);
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
+    const email = (formData.get("email") as string).trim().toLowerCase();
 
-    startTransition(async () => {
+    startFormTransition(async () => {
       const result: ActionState = await signupAction({}, formData);
 
       if (result?.error) {
@@ -69,7 +74,7 @@ export default function SignupPage() {
       }
 
       // no error = supabase sent the OTP email, so we can move to the next step
-      setSubmittedEmail(email.trim().toLowerCase());
+      setSubmittedEmail(email);
       setStep("otp");
     });
   }
@@ -81,7 +86,7 @@ export default function SignupPage() {
 
     const formData = new FormData(e.currentTarget);
 
-    startTransition(async () => {
+    startOtpTransition(async () => {
       const result: ActionState = await verifySignupOtpAction({}, formData);
 
       if (result?.error) {
@@ -99,7 +104,7 @@ export default function SignupPage() {
 
     const formData = new FormData(e.currentTarget);
 
-    startTransition(async () => {
+    startResendTransition(async () => {
       const result: ActionState = await resendOtpAction({}, formData);
 
       setResendMessage(
@@ -157,7 +162,7 @@ export default function SignupPage() {
       </div>
 
       {/* card */}
-      <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-6">
+      <Card className="">
         {/* step 1: signup form */}
         {step === "form" && (
           <>
@@ -206,10 +211,10 @@ export default function SignupPage() {
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isPending}
+                isLoading={isFormPending}
                 className="w-full mt-2"
               >
-                {isPending ? "Creating account…" : "Create account"}
+                {isFormPending ? "Creating account…" : "Create account"}
               </Button>
             </form>
 
@@ -220,7 +225,7 @@ export default function SignupPage() {
             </p>
           </>
         )}
-        
+
         {/* step 2: OTP verification */}
         {step === "otp" && (
           <>
@@ -245,16 +250,16 @@ export default function SignupPage() {
                 */}
               <input type="hidden" name="email" value={submittedEmail} />
 
-              <OtpInput name="token" disabled={isPending} />
+              <OtpInput name="token" disabled={isOtpPending} />
 
               <Button
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isPending}
+                isLoading={isOtpPending}
                 className="w-full"
               >
-                {isPending ? "Verifying…" : "Verify email"}
+                {isOtpPending ? "Verifying…" : "Verify email"}
               </Button>
             </form>
 
@@ -283,15 +288,14 @@ export default function SignupPage() {
                 type="submit"
                 variant="ghost"
                 size="sm"
-                isLoading={isPending}
+                isLoading={isResendPending}
               >
-                {/* {isPending ? "Sending…" : "Resend code"} */}
-                Resend code
+                {isResendPending ? "Sending…" : "Resend code"}
               </Button>
             </form>
           </>
         )}
-      </div>
+      </Card>
 
 
       {/* switch to login */}
