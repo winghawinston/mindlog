@@ -9,9 +9,6 @@
   ============================================================ 
 */
 
-.ab {
-  color: oklch(22.567% 0.00377 106.81)
-}
 @theme {
   /* Brand palette */
   --color-forest:       oklch(47.584% 0.07767 162.2); /* #2d6a4f */
@@ -116,6 +113,23 @@
       transition: background-color 500000s ease-in-out 0s;
       caret-color: #d8d5ce;
     }
+  }
+
+  /* ============================================================
+   HIDE NUMBER INPUT SPINNERS
+   Browser default spinners (up/down arrows) are unstyled and
+   clash with our design. We hide them entirely — users can
+   still type numbers or use keyboard up/down arrows.
+   ============================================================ */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: textfield;
   }
 }
 
