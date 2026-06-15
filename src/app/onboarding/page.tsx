@@ -13,6 +13,7 @@ import { saveOnboardingAction, skipOnboardingAction } from "./actions";
 import { cn } from "@/lib/utils";
 import Button from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
 
 // ============================================================
 // TYPES
@@ -65,7 +66,12 @@ export default function OnboardingPage() {
 
   // Submission state
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+
+  // CHANGED: two separate transitions so each button has its own pending state.
+  // WHY: a single useTransition means both buttons show their loading state
+  // simultaneously, which is visually wrong and confusing for the user.
+  const [isSavePending, startSaveTransition] = useTransition();
+  const [isSkipPending, startSkipTransition] = useTransition();
 
   // Toggle a condition pill on/off with exclusivity logic
   const toggleCondition = (condition: MentalHealthCondition) => {
@@ -87,6 +93,24 @@ export default function OnboardingPage() {
   const handleSubmit = () => {
     setError(null);
 
+    // ADDED: validate that at least one lifestyle field is filled.
+    // WHY: "Complete setup" implies there's something to save. If all
+    // fields are empty, the button is semantically identical to "Skip" —
+    // so we prompt the user to either fill something in or use Skip.
+    const hasInput =
+      selectedConditions.length > 0 ||
+      otherText.trim() !== "" ||
+      sleepHours.trim() !== "" ||
+      caffeineMg.trim() !== "" ||
+      medicationNotes.trim() !== "";
+
+    if (!hasInput) {
+      setError(
+        "Please fill in at least one field, or use 'Skip this step' to go to your dashboard."
+      );
+      return;
+    }
+
     // Manually build FormData from local state across all steps.
     // Arrays must be JSON-stringified since FormData doesn't support them natively.
     const formData = new FormData();
@@ -99,7 +123,7 @@ export default function OnboardingPage() {
     // startTransition marks this as a non-urgent state update.
     // isPending becomes true while the server action is running,
     // which we use to show the loading state on the submit button.
-    startTransition(async () => {
+    startSaveTransition(async () => {
       const result: ActionState = await saveOnboardingAction({}, formData);
       if (result?.error) setError(result.error);
       // No error = server called redirect("/dashboard"), page navigates automatically
@@ -107,7 +131,7 @@ export default function OnboardingPage() {
   };
 
   const handleSkip = () => {
-    startTransition(async () => {
+    startSkipTransition(async () => {
       await skipOnboardingAction();
     });
   };
@@ -133,7 +157,7 @@ export default function OnboardingPage() {
           <StepWelcome
             onNext={() => setStep(2)}
             onSkip={handleSkip}
-            isPending={isPending}
+            isSkipPending={isSkipPending}
           />
         )}
 
@@ -154,11 +178,12 @@ export default function OnboardingPage() {
             caffeineMg={caffeineMg}
             medicationNotes={medicationNotes}
             error={error}
-            isPending={isPending}
-            onSleepChange={setSleepHours}
-            onCaffeineChange={setCaffeineMg}
-            onMedicationChange={setMedicationNotes}
-            onBack={() => setStep(2)}
+            isSavePending={isSavePending}
+            isSkipPending={isSkipPending}
+            onSleepChange={(v) => { setSleepHours(v); setError(null); }}
+            onCaffeineChange={(v) => { setCaffeineMg(v); setError(null); }}
+            onMedicationChange={(v) => { setMedicationNotes(v); setError(null); }}
+            onBack={() => { setStep(2); setError(null); }}
             onSubmit={handleSubmit}
             onSkip={handleSkip}
           />
@@ -209,11 +234,11 @@ function StepIndicator({
 function StepWelcome({
   onNext,
   onSkip,
-  isPending,
+  isSkipPending,
 }: {
   onNext: () => void;
   onSkip: () => void;
-  isPending: boolean;
+  isSkipPending: boolean;
 }) {
   return (
     <div>
@@ -240,7 +265,7 @@ function StepWelcome({
       </div>
 
       {/* What we collect — transparency is important for a research tool */}
-      <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-5 mb-4 space-y-3">
+      <Card className="p-5 mb-4 space-y-3">
         <p className="text-xs font-medium text-ink-subtle dark:text-[#555250] uppercase tracking-wide">
           What MindLog tracks
         </p>
@@ -265,7 +290,7 @@ function StepWelcome({
           <div key={item.label} className="flex items-start gap-3">
             <span className="text-base mt-0.5" aria-hidden="true">{item.icon}</span>
             <div>
-              <p className="text-sm font-medium text-ink dark:text-[#f8f5ce]">
+              <p className="text-sm font-medium text-ink dark:text-[#d8d5ce]">
                 {item.label}
               </p>
               <p className="text-xs text-ink-subtle dark:text-[#555250]">
@@ -274,7 +299,7 @@ function StepWelcome({
             </div>
           </div>
         ))}
-      </div>
+      </Card>
 
       {/* privacy note */}
       <p className="text-xs text-ink-subtle dark:text-[#555250] text-center mb-6 leading-relaxed">
@@ -296,7 +321,7 @@ function StepWelcome({
         size="lg"
         className="w-full"
         onClick={onSkip}
-        isLoading={isPending}
+        isLoading={isSkipPending}
       >
         Skip setup, go to dashboard
       </Button>
@@ -338,7 +363,7 @@ function StepConditions({
         </p>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-5 mb-4">
+      <Card className="p-5 mb-4">
         {/* regular conditions — multi-select */}
         <div className="flex flex-wrap gap-2 mb-4">
           {CONDITIONS.map((condition) => (
@@ -385,7 +410,7 @@ function StepConditions({
             />
           ))}
         </div>
-      </div>
+      </Card>
 
       <p className="text-xs text-ink-subtle dark:text-[#555250] text-center mb-6">
         You can update this anytime from your profile settings.
@@ -453,7 +478,8 @@ function StepLifestyle({
   caffeineMg,
   medicationNotes,
   error,
-  isPending,
+  isSavePending,
+  isSkipPending,
   onSleepChange,
   onCaffeineChange,
   onMedicationChange,
@@ -465,7 +491,8 @@ function StepLifestyle({
   caffeineMg: string;
   medicationNotes: string;
   error: string | null;
-  isPending: boolean;
+  isSavePending: boolean;
+  isSkipPending: boolean;
   onSleepChange: (v: string) => void;
   onCaffeineChange: (v: string) => void;
   onMedicationChange: (v: string) => void;
@@ -473,6 +500,8 @@ function StepLifestyle({
   onSubmit: () => void;
   onSkip: () => void;
 }) {
+  const isAnythingPending = isSavePending || isSkipPending;
+
   return (
     <div>
       <div className="mb-6">
@@ -484,7 +513,7 @@ function StepLifestyle({
         </p>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-xl p-5 mb-4 space-y-4">
+      <Card className="p-5 mb-4 space-y-4">
         <Input
           label="Average sleep hours"
           name="avg_sleep_hours"
@@ -540,12 +569,12 @@ function StepLifestyle({
             Medication context only — no prescriptions or dosages needed.
           </p>
         </div>
-      </div>
+      </Card>
 
       {/* submission error */}
       {error && (
         <div
-          className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#EDAAA6] dark:border-[#5a2020]"
+          className="mb-4 px-3 py-2.5 rounded-lg bg-[#fcecea] dark:bg-[#2a1414] border border-[#edaaa6] dark:border-[#5a2020]"
           role="alert"
         >
           <p className="text-sm text-danger dark:text-[#e87070]">{error}</p>
@@ -558,7 +587,7 @@ function StepLifestyle({
           size="lg"
           className="flex-1"
           onClick={onBack}
-          disabled={isPending}
+          disabled={isAnythingPending}
         >
           Back
         </Button>
@@ -567,9 +596,11 @@ function StepLifestyle({
           size="lg"
           className="flex-1"
           onClick={onSubmit}
-          isLoading={isPending}
+          isLoading={isSavePending}
+          // disable skip button while save is running and vice versa
+          disabled={isSkipPending}
         >
-          {isPending ? "Saving…" : "Complete setup"}
+          {isSavePending ? "Saving…" : "Complete setup"}
         </Button>
       </div>
 
@@ -578,7 +609,8 @@ function StepLifestyle({
         size="lg"
         className="w-full"
         onClick={onSkip}
-        disabled={isPending}
+        isLoading={isSkipPending}
+        disabled={isSavePending}
       >
         Skip this step
       </Button>
