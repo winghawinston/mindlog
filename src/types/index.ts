@@ -116,3 +116,36 @@ export type MentalHealthCondition =
   | "none"
   | "prefer_not_to_say"
   | "other";
+
+
+  
+// ------------------------------------------------------------
+// DASHBOARD CHART DATA
+// Flattened, chart-ready shape derived from joining
+// journaling_sessions + keystroke_metrics + self_reports.
+// ------------------------------------------------------------
+
+/**
+ * One row per submitted session, with all relevant fields flattened
+ * to the top level (no nested objects) — this is what gets passed
+ * to chart components as `data`.
+ *
+ * Fields are `number | null` rather than always `number` because
+ * keystroke_metrics can have null values (e.g. wpm is null if
+ * totalKeystrokes was 0 — an edge case, but the type must allow it).
+ */
+export interface DashboardDataPoint {
+  date: string;          // formatted label, e.g. "Jun 12"
+  rawDate: string;       // ISO timestamp, for sorting/tooltips
+  mood: number;
+  stress: number;
+  anxiety: number;
+  focus: number;
+  fatigue: number;
+  wpm: number | null;
+  pauseCount: number | null;
+  avgPauseDurationMs: number | null;
+  backspaceCount: number | null;
+  errorRatePercent: number | null; // error_rate * 100, for readability
+  focusLossCount: number | null;
+}
