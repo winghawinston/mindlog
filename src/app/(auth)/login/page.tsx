@@ -111,7 +111,7 @@ export default function LoginPage() {
               Welcome back
             </h1>
             <p className="mt-1 text-sm text-ink-muted dark:text-[#888480]">
-              Sign in to your MindLog account
+              Sign in to your Cadence account
             </p>
           </>
         )}

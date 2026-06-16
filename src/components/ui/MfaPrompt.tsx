@@ -20,8 +20,8 @@ import { Card } from "./Card";
 import { ShieldCheck, X } from "lucide-react";
 import Button from "./Button";
 
-
-const DISMISSED_KEY = "mindlog-mfa-prompt-dismissed";
+// CHANGED: localStorage key + body copy
+const DISMISSED_KEY = "cadence-mfa-prompt-dismissed";
 
 interface MfaPromptProps {
   // pass the user's mfa_enabled value from their profile.
@@ -102,7 +102,7 @@ export function MfaPrompt({ mfaEnabled }: MfaPromptProps) {
             Secure your account
           </h2>
           <p className="text-sm text-ink-muted dark:text-[#888480] leading-relaxed mb-5">
-            MindLog stores sensitive behavioral and mood data. Two-factor
+            Cadence stores sensitive behavioral and mood data. Two-factor
             authentication ensures only you can access your journal — even
             if your password is ever compromised.
           </p>

@@ -43,7 +43,7 @@ export const useUserStore = create<UserState>()(
       clearProfile: () => set({ profile: null }),
     }),
     {
-      name: "mindlog-user", // name of the item in storage
+      name: "cadence-user", // name of the item in storage
       // Only persist the profile, not the action functions.
       partialize: (state) => ({ profile: state.profile }),
     }

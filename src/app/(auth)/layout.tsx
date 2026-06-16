@@ -28,7 +28,7 @@ export default function AuthLayout({
 
       {/* Footer note — important for a research tool */}
       <p className="relative mt-8 text-xs text-ink-subtle dark:text-[#555250] text-center max-w-xs">
-        MindLog is a behavioral research tool, not a diagnostic system.
+        Cadence is a behavioral research tool, not a diagnostic system.
         <br />
         It does not provide medical advice.
       </p>

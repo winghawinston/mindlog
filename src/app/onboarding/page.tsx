@@ -227,7 +227,7 @@ function StepIndicator({
 
 // ============================================================
 // STEP 1 — WELCOME
-// Explains what MindLog is and what this setup does.
+// Explains what Cadence is and what this setup does.
 // Sets expectations before asking for any sensitive info.
 // ============================================================
 
@@ -256,7 +256,7 @@ function StepWelcome({
           </svg>
         </div>
         <h1 className="text-2xl font-medium text-ink dark:text-[#f0ede8] mb-2">
-          Welcome to MindLog
+          Welcome to Cadence
         </h1>
         <p className="text-sm text-ink-muted dark:text-[#888480] leading-relaxed">
           Let&apos;s set up your profile. This helps give your data more context —
@@ -267,7 +267,7 @@ function StepWelcome({
       {/* What we collect — transparency is important for a research tool */}
       <Card className="p-5 mb-4 space-y-3">
         <p className="text-xs font-medium text-ink-subtle dark:text-[#555250] uppercase tracking-wide">
-          What MindLog tracks
+          What Cadence tracks
         </p>
 
         {[
@@ -303,7 +303,7 @@ function StepWelcome({
 
       {/* privacy note */}
       <p className="text-xs text-ink-subtle dark:text-[#555250] text-center mb-6 leading-relaxed">
-        MindLog is a behavioral research tool. It does not diagnose, treat,
+        Cadence is a behavioral research tool. It does not diagnose, treat,
         or provide medical advice. Your data is never shared.
       </p>
 

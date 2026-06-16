@@ -21,10 +21,10 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "MindLog",
-    template: "%s · MindLog",
+    default: "Cadence",
+    template: "%s · Cadence",
   },
-  description: "A behavioral monitoring tool for tracking psychological well-being through keystroke dynamics and self-reported data.",
+  description: "A private journaling space that mirrors your inner peace by listening to the rhythm of your hands.",
   // PWA manifest — I'll add this later
   manifest: "/manifest.json",
 };
