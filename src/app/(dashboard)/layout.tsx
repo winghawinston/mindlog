@@ -29,7 +29,7 @@ export default async function DashboardLayout({
       <DashboardNav userEmail={user.email ?? ""} />
 
       {/* page content */}
-      <main className="flex-1 min-w-0 overflow-auto">
+      <main className="flex-1 min-w-0 overflow-auto pb-16 md:pb-0">
         {children}
       </main>
 

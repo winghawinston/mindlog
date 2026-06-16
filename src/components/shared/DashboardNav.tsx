@@ -30,19 +30,138 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
   };
 
   return (
-    <nav className="w-56 shrink-0 flex flex-col border-r border-parchment dark:border-dark-border bg-white dark:bg-dark-surface h-screen sticky top-0">
-      {/* brand */}
-      <div className="flex items-center gap-2.5 px-5 py-5 border-b border-parchment dark:border-dark-border">
-        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-forest">
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M2 10h3l2-6 3 12 2-8 1 2h5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <span className="text-sm font-medium text-ink dark:text-[#f0ede8]">MindLog</span>
-      </div>
+    <>
+      {/* ═══════════════════════════════════════════════════════
+          DESKTOP SIDEBAR
+          - Always visible on md+ screens
+          - Collapsed (64px) by default, expands (240px) on hover
+          - Pure CSS hover — no JS state, no click required
+          - Frosted glass effect with backdrop-filter
+          ═══════════════════════════════════════════════════════ */}
+      <nav
+        className={cn(
+          // layout
+          "group hidden md:flex flex-col",
+          "h-screen sticky top-0 z-30 shrink-0",
+          // size transition — CSS hover handles expand/collapse
+          "w-16 hover:w-60 transition-[width] duration-300 ease-in-out",
+          // overflow must be hidden so text labels don't spill out when collapsed
+          "overflow-hidden",
+          // visual — frosted glass
+          "border-r border-parchment/60 dark:border-dark-border/60",
+          "bg-white/85 dark:bg-dark-surface/85 backdrop-blur-xl"
+        )}
+      >
+        {/* brand */}
+        <div className="flex items-center h-16 px-4 border-b border-parchment/60 dark:border-dark-border/60 shrink-0">
+          {/* logo mark — always visible */}
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-forest shrink-0">
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M2 10h3l2-6 3 12 2-8 1 2h5"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
 
-      {/* nav links */}
-      <div className="flex-1 px-3 py-4 flex flex-col gap-1">
+          {/* brand name — fades in as sidebar expands */}
+          <span
+            className={cn(
+              "ml-3 text-sm font-medium text-ink dark:text-[#F0EDE8] whitespace-nowrap",
+              // fade in with a slight delay so it appears after width animation starts
+              "opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-100"
+            )}
+          >
+            Cadence
+          </span>
+        </div>
+
+        {/* nav items */}
+        <div className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-hidden">
+          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            const isActive = pathname === href || pathname.startsWith(`${href}/`);
+            return (
+              <Link
+                key={href}
+                href={href}
+                title={label} // native tooltip when collapsed
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150",
+                  "whitespace-nowrap",
+                  isActive
+                    ? "bg-forest/10 text-forest dark:bg-sage/10 dark:text-sage"
+                    : "text-ink-muted hover:bg-linen hover:text-ink dark:text-[#888480] dark:hover:bg-dark-raised dark:hover:text-[#D8D5CE]"
+                )}
+              >
+                <Icon size={18} className="shrink-0" aria-hidden="true" />
+                <span
+                  className={cn(
+                    "text-sm font-medium",
+                    "opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-100"
+                  )}
+                >
+                  {label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* user + logout */}
+        <div className="px-2 pb-4 border-t border-parchment/60 dark:border-dark-border/60 pt-3 overflow-hidden shrink-0">
+          {/* email — only visible when expanded */}
+          <p
+            className={cn(
+              "px-3 text-xs text-ink-subtle dark:text-[#555250] truncate mb-1",
+              "opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-100"
+            )}
+          >
+            {userEmail}
+          </p>
+
+          <button
+            onClick={handleLogout}
+            disabled={isPending}
+            title="Sign out"
+            className={cn(
+              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm",
+              "transition-colors duration-150 cursor-pointer whitespace-nowrap",
+              "text-ink-muted hover:bg-[#FCECEA] hover:text-danger",
+              "dark:text-[#888480] dark:hover:bg-[#2A1414] dark:hover:text-[#E87070]",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            <LogOut size={18} className="shrink-0" aria-hidden="true" />
+            <span
+              className={cn(
+                "opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-100"
+              )}
+            >
+              {isPending ? "Signing out…" : "Sign out"}
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      {/* ═══════════════════════════════════════════════════════
+          MOBILE BOTTOM NAV
+          - Only visible on screens smaller than md
+          - Fixed to bottom of screen
+          - Shows icons + labels for all main routes
+          - Logout is accessed via Profile page on mobile
+          ═══════════════════════════════════════════════════════ */}
+      <nav
+        className={cn(
+          "md:hidden fixed bottom-0 left-0 right-0 z-30",
+          "flex items-center justify-around",
+          "h-16 px-2",
+          "border-t border-parchment/60 dark:border-dark-border/60",
+          "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-xl"
+        )}
+      >
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -50,38 +169,23 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150",
+                "flex flex-col items-center justify-center gap-0.5 flex-1 h-full",
+                "text-xs transition-colors duration-150",
                 isActive
-                  ? "bg-forest/10 text-forest font-medium dark:bg-sage/10 dark:text-sage"
-                  : "text-ink-muted hover:bg-linen hover:text-ink dark:text-[#888480] dark:hover:bg-dark-raised dark:hover:text-[#d8d5ce]"
+                  ? "text-forest dark:text-sage"
+                  : "text-ink-subtle dark:text-[#555250]"
               )}
             >
-              <Icon size={16} aria-hidden="true" />
-              {label}
+              <Icon
+                size={20}
+                strokeWidth={isActive ? 2.5 : 1.75}
+                aria-hidden="true"
+              />
+              <span className="font-medium">{label}</span>
             </Link>
           );
         })}
-      </div>
-
-      {/* user + logout */}
-      <div className="px-3 pb-4 border-t border-parchment dark:border-dark-border pt-4">
-        <p className="px-3 text-xs text-ink-subtle dark:text-[#555250] truncate mb-2">
-          {userEmail}
-        </p>
-        <button
-          onClick={handleLogout}
-          disabled={isPending}
-          className={cn(
-            "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors duration-150 cursor-pointer",
-            "text-ink-muted hover:bg-[#fcecea] hover:text-danger",
-            "dark:text-[#888480] dark:hover:bg-[#2a1414] dark:hover:text-[#e87070]",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          )}
-        >
-          <LogOut size={16} aria-hidden="true" />
-          {isPending ? "Signing out…" : "Sign out"}
-        </button>
-      </div>
-    </nav>
+      </nav>
+    </>
   )
 }
