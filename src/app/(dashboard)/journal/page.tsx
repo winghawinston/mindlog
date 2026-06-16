@@ -40,6 +40,12 @@ type ScoreName = typeof SCORE_FIELDS[number]["name"];
 export default function JournalPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // ADDED: stores metrics captured at the moment "Done writing" is clicked.
+  // WHY: calling getComputedMetrics() on submit is too late — the textarea
+  // has already unmounted (it's inside {step === "writing" && (...)}), so
+  // textareaRef.current is null and wordCount/wpm compute as 0.
+  const capturedMetricsRef = useRef<ReturnType<typeof getComputedMetrics> | null>(null);
+
   const [step, setStep]           = useState<JournalStep>("writing");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [content, setContent]     = useState("");
@@ -95,21 +101,28 @@ export default function JournalPage() {
   }, [doAutosave]);
 
   // ── "Done writing" → validate and move to self-report ──
+  // CHANGED: capture metrics HERE, before step changes and textarea unmounts
   const handleDoneWriting = () => {
     setError(null);
     if (liveMetrics.wordCount < MIN_WORDS) {
       setError(`Please write at least ${MIN_WORDS} words before submitting.`);
       return;
     }
+    // Textarea is still mounted here — ref is valid — metrics are correct
+    capturedMetricsRef.current = getComputedMetrics();
     setStep("self-report");
   };
 
   // ── Submit everything ────────────────────────────────────
+  // CHANGED: use capturedMetricsRef instead of calling getComputedMetrics() again
   const handleSubmit = () => {
     if (!sessionId) return;
     setError(null);
 
-    const metrics = getComputedMetrics();
+    // Use what we captured at "Done writing" time.
+    // Fallback to getComputedMetrics() for safety, but in practice
+    // capturedMetricsRef.current will always be set by this point.
+    const metrics = capturedMetricsRef.current ?? getComputedMetrics();
 
     const formData = new FormData();
     formData.set("session_id",   sessionId);
