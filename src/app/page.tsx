@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { RhythmText } from "@/components/landing/RhythmText";
 
 export const metadata = {
   title: "Cadence — Your mind has a rhythm. Discover it.",
@@ -73,16 +74,7 @@ export default async function LandingPage() {
           {/* headline */}
           <h1 className="text-5xl md:text-7xl font-medium leading-[1.08] tracking-tight text-white mb-6">
             Your mind has{" "}
-            <span
-              className="text-transparent"
-              style={{
-                backgroundImage: "linear-gradient(135deg, #52B788 0%, #C9A96E 100%)",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-              }}
-            >
-              a rhythm.
-            </span>
+            <RhythmText />
             <br />
             Discover it.
           </h1>
