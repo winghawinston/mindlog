@@ -6,6 +6,7 @@ import { useTransition } from "react";
 import { BookOpen, LayoutDashboard, User, LogOut } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+// import { useWritingStore } from "@/store/writingStore";
 
 interface NavItem {
   href: string;
@@ -22,6 +23,9 @@ const NAV_ITEMS: NavItem[] = [
 export default function DashboardNav({ userEmail }: { userEmail: string }) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+
+  // ADDED: read canvas mode — nav retreats when user is writing
+  // const isCanvasMode = useWritingStore((state) => state.isCanvasMode);
 
   const handleLogout = () => {
     startTransition(async () => {
@@ -49,7 +53,12 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
           "overflow-hidden",
           // visual — frosted glass
           "border-r border-parchment/60 dark:border-dark-border/60",
-          "bg-white/85 dark:bg-dark-surface/85 backdrop-blur-xl"
+          "bg-white/85 dark:bg-dark-surface/85 backdrop-blur-xl",
+          // CHANGED: in canvas mode, the nav fades to near-invisible so the
+          // user can focus entirely on writing. Hovering restores it fully.
+          // isCanvasMode
+          //   ? "opacity-20 hover:opacity-100 transition-opacity duration-500"
+          //   : "opacity-100 transition-opacity duration-300"
         )}
       >
         {/* brand */}
@@ -80,7 +89,7 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
         </div>
 
         {/* nav items */}
-        <div className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-hidden">
+        <div className="flex-1 px-2 py-3 flex flex-col gap-1 overflow-hidden">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href || pathname.startsWith(`${href}/`);
             return (
@@ -89,17 +98,20 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
                 href={href}
                 title={label} // native tooltip when collapsed
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150",
+                  "flex items-center rounded-lg transition-colors duration-150",
                   "whitespace-nowrap",
                   isActive
                     ? "bg-forest/10 text-forest dark:bg-sage/10 dark:text-sage"
                     : "text-ink-muted hover:bg-linen hover:text-ink dark:text-[#888480] dark:hover:bg-dark-raised dark:hover:text-[#D8D5CE]"
                 )}
-              >
-                <Icon size={18} className="shrink-0" aria-hidden="true" />
+              > 
+                <span className="flex items-center justify-center ml-3.5 py-2.5 shrink-0">
+                  <Icon size={18} aria-hidden="true" />
+                </span>
+
                 <span
                   className={cn(
-                    "text-sm font-medium",
+                    "text-sm font-medium ml-3",
                     "opacity-0 group-hover:opacity-100 transition-opacity duration-150 delay-100"
                   )}
                 >
@@ -159,7 +171,11 @@ export default function DashboardNav({ userEmail }: { userEmail: string }) {
           "flex items-center justify-around",
           "h-16 px-2",
           "border-t border-parchment/60 dark:border-dark-border/60",
-          "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-xl"
+          "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-xl",
+          // CHANGED: hide bottom nav in canvas mode on mobile — writing takes the full screen
+          // isCanvasMode
+          //   ? "opacity-0 pointer-events-none translate-y-2 transition-all duration-300"
+          //   : "opacity-100 translate-y-0 transition-all duration-300"
         )}
       >
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
