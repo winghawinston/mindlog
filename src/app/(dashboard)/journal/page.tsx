@@ -169,8 +169,8 @@ export default function JournalPage() {
   }, [doAutosave]);
 
   // ── Canvas mode: signal when textarea is focused ──────────
-  const handleFocus = () => setCanvasMode(true);
-  const handleBlur  = () => setCanvasMode(false);
+  // const handleFocus = () => setCanvasMode(true);
+  // const handleBlur  = () => setCanvasMode(false);
 
   // ── "Done writing" → validate and move to self-report ──
   // CHANGED: capture metrics HERE, before step changes and textarea unmounts
