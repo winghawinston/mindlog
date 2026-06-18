@@ -21,6 +21,7 @@ import { TrendChart } from "@/components/dashboard/TrendChart";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardDataPoint } from "@/types";
 import { redirect } from "next/navigation";
+import { StableDayCard } from "@/components/dashboard/StableDayCard";
 
 export const metadata = { title: "Dashboard" };
 
@@ -58,6 +59,43 @@ interface RawSessionRow {
 function firstOrNull<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+// Computes the personal average for a numeric field across all sessions
+function computeBaseline(
+  data: DashboardDataPoint[],
+  key: keyof DashboardDataPoint
+): number | undefined {
+  const values = data
+    .map((d) => d[key])
+    .filter((v): v is number => typeof v === "number" && !isNaN(v));
+  if (values.length < 2) return undefined;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+// Computes how closely recent sessions match the personal baseline (0–100)
+function computeBaselineMatch(data: DashboardDataPoint[]): number {
+  if (data.length < 2) return 100;
+  const validWpm = data.filter((d) => d.wpm !== null).map((d) => d.wpm as number);
+  if (validWpm.length < 2) return 100;
+  const avg = validWpm.reduce((a, b) => a + b, 0) / validWpm.length;
+  const recent = validWpm[validWpm.length - 1];
+  const deviation = Math.abs(recent - avg) / (avg || 1);
+  return Math.min(100, Math.round(Math.max(0, (1 - deviation) * 100)));
+}
+
+// Generates a personalized greeting based on recent mood trend
+function generateGreeting(data: DashboardDataPoint[]): string {
+  if (data.length === 0) return "Welcome. Your story is just beginning.";
+  if (data.length < 3) return "Early days. Keep writing — patterns will emerge.";
+
+  const recent = data.slice(-3);
+  const avgMood = recent.reduce((acc, d) => acc + (d.mood ?? 5), 0) / recent.length;
+
+  if (avgMood >= 7.5) return "Your rhythm is bright this week. Something's working.";
+  if (avgMood >= 5.5) return "Your mind is holding a steady rhythm.";
+  if (avgMood >= 3.5) return "A heavier week. Writing through it still counts.";
+  return "A tough stretch. Showing up anyway is its own kind of strength.";
 }
 
 export default async function DashboardPage() {
@@ -127,9 +165,12 @@ export default async function DashboardPage() {
   // ── Empty state ─────────────────────────────────────────────
   if (chartData.length === 0) {
     return (
-      <div className="p-8">
-        <PageHeader sessionCount={0} />
-        <EmptyState />
+      <div className="flex flex-col h-full p-8">
+        <PageHeader sessionCount={0} greeting="Welcome. Your story is just beginning." />
+        {/* CHANGED: centered empty state with flex-1 */}
+        <div className="flex-1 flex items-center justify-center">
+          <EmptyState />
+        </div>
       </div>
     );
   }
@@ -145,6 +186,16 @@ export default async function DashboardPage() {
   const avgMood = avg(chartData.map((d) => d.mood));
   const avgStress = avg(chartData.map((d) => d.stress));
   const avgWpm = avg(chartData.map((d) => d.wpm));
+
+  const baselineMatch = computeBaselineMatch(chartData);
+  const greeting      = generateGreeting(chartData);
+
+  // Personal baselines (averages) for the baseline halo on charts
+  const baselines = {
+    mood:   computeBaseline(chartData, "mood"),
+    stress: computeBaseline(chartData, "stress"),
+    wpm:    computeBaseline(chartData, "wpm"),
+  };
 
   // ── Correlation pairs (filter out nulls per-pair) ───────────
   const pairFrom = (
@@ -169,22 +220,35 @@ export default async function DashboardPage() {
   const fatigueVsError = pairFrom("errorRatePercent", "fatigue");
 
   return (
-    <div className="p-8 space-y-6 max-w-6xl">
-      <PageHeader sessionCount={chartData.length} />
+    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-5">
+      <PageHeader sessionCount={chartData.length} greeting={greeting} />
 
-      <SummaryCards
-        totalSessions={chartData.length}
-        avgMood={avgMood}
-        avgStress={avgStress}
-        avgWpm={avgWpm}
-      />
+      {/* Stable Day + Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-1">
+          <StableDayCard
+            baselineMatch={baselineMatch}
+            greeting={greeting}
+            sessionCount={chartData.length}
+          />
+        </div>
+        <div className="md:col-span-2">
+          <SummaryCards
+            totalSessions={chartData.length}
+            avgMood={avgMood}
+            avgStress={avgStress}
+            avgWpm={avgWpm}
+          />
+        </div>
+      </div>
 
       {/* Mood & Stress over time — fixed 1-10 scale for readability */}
       <TrendChart
         title="Mood & stress over time"
-        description="Self-reported after each session"
+        description="How you felt going into each session"
         data={chartData}
         yDomain={[1, 10]}
+        baselines={{ mood: baselines.mood, stress: baselines.stress }}
         lines={[
           { dataKey: "mood", label: "Mood", color: "#52B788" },   // sage
           { dataKey: "stress", label: "Stress", color: "#C0433A" }, // danger
@@ -196,17 +260,18 @@ export default async function DashboardPage() {
         title="Typing speed over time"
         description="Words per minute, per session"
         data={chartData}
+        baselines={{ wpm: baselines.wpm }}
         lines={[{ dataKey: "wpm", label: "WPM", color: "#5B9BD4" }]} // info
       />
 
       {/* Pause behavior over time */}
       <TrendChart
         title="Pauses & corrections over time"
-        description="Number of pauses (>1.5s gaps) and backspaces per session"
+        description="Number of pauses (>1.5s gaps) and corrections accross session"
         data={chartData}
         lines={[
           { dataKey: "pauseCount", label: "Pauses", color: "#C9A96E" },     // sand
-          { dataKey: "backspaceCount", label: "Backspaces", color: "#D4952A" }, // warning
+          { dataKey: "backspaceCount", label: "Corrections", color: "#D4952A" }, // warning
         ]}
       />
 
@@ -220,45 +285,48 @@ export default async function DashboardPage() {
           points={stressVsWpm.x.map((x, i) => ({ x, y: stressVsWpm.y[i] }))}
         />
         <CorrelationScatter
-          title="Mood vs pause frequency"
+          title="Mood vs pauses"
           xLabel="Pauses"
           yLabel="Mood"
           color="#52B788"
           points={moodVsPause.x.map((x, i) => ({ x, y: moodVsPause.y[i] }))}
         />
         <CorrelationScatter
-          title="Fatigue vs error rate"
-          xLabel="Error rate (%)"
+          title="Fatigue vs corrections"
+          xLabel="Error %"
           yLabel="Fatigue"
           color="#C0433A"
           points={fatigueVsError.x.map((x, i) => ({ x, y: fatigueVsError.y[i] }))}
         />
       </div>
 
-      {/* Plain-language summary */}
+      {/* Personal Trends — Conversational insights */}
       <InsightsPanel
         sessionCount={chartData.length}
         pairs={[
-          { label: "Typing speed ↔ Stress", x: stressVsWpm.x, y: stressVsWpm.y },
-          { label: "Pause frequency ↔ Mood", x: moodVsPause.x, y: moodVsPause.y },
-          { label: "Error rate ↔ Fatigue", x: fatigueVsError.x, y: fatigueVsError.y },
+          { xKey: "wpm",              yKey: "stress",  ...stressVsWpm   },
+          { xKey: "pauseCount",       yKey: "mood",    ...moodVsPause   },
+          { xKey: "errorRatePercent", yKey: "fatigue", ...fatigueVsError },
         ]}
       />
     </div>
   )
 }
 
-function PageHeader({ sessionCount }: { sessionCount: number }) {
+function PageHeader({ sessionCount, greeting }: { sessionCount: number; greeting: string }) {
   return (
     <div>
-      <h1 className="text-2xl font-medium text-ink dark:text-[#F0EDE8] mb-1">
-        Your Dashboard
-      </h1>
-      <p className="text-sm text-ink-muted dark:text-[#888480]">
-        {sessionCount === 0
-          ? "Analytics and trends will appear here as you complete journal sessions."
-          : `${sessionCount} session${sessionCount === 1 ? "" : "s"} logged so far.`}
+      <p className="text-xs text-ink-subtle dark:text-[#555250] uppercase tracking-wide mb-1">
+        My Inner Cadence
       </p>
+      <h1 className="text-2xl font-medium text-ink dark:text-[#f0ede8]">
+        {greeting}
+      </h1>
+      {sessionCount > 0 && (
+        <p className="text-sm text-ink-muted dark:text-[#888480] mt-1">
+          {sessionCount} session{sessionCount === 1 ? "" : "s"} logged.
+        </p>
+      )}
     </div>
   );
 }

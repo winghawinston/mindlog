@@ -67,7 +67,7 @@ export function CorrelationScatter({
       </CardHeader>
 
       <CardContent>
-        <div className="text-ink-subtle dark:text-[#555250]" style={{ height: 224, minHeight: 224 }}>
+        <div className="min-w-0 text-ink-subtle dark:text-[#555250]" style={{ height: 200 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.15} />

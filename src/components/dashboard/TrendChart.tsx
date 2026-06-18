@@ -1,27 +1,22 @@
 "use client";
 
 // ============================================================
-// TREND CHART — line chart showing one or more metrics over time.
+// TREND CHART — area chart with gradient fills and baseline halo.
 //
-// RECHARTS PRIMER (if this is your first time):
-// - <ResponsiveContainer> makes the chart fill its parent's width/height.
-//   Requires the parent to have an explicit height (we set h-64 below).
-// - <LineChart data={...}> takes an array of objects; each object is
-//   one point on the x-axis. Every <Line dataKey="x"> reads that key
-//   from each object in `data`.
-// - <CartesianGrid> draws the background gridlines.
-// - <Tooltip> shows values on hover — customized below to match our
-//   design system instead of Recharts' default white box.
+// Uses AreaChart (not LineChart) to enable the gradient fill
+// under each line. The fill fades from the line color at 20%
+// opacity down to 0% at the bottom — soft, non-clinical visual.
 //
-// The wrapping div's text color (text-ink-subtle dark:text-[...]) is
-// inherited by any SVG element using stroke="currentColor" or
-// fill="currentColor" — this is how axis/grid lines adapt to dark mode
-// without us hardcoding two sets of colors.
+// Baseline halo: a dashed reference line at the metric's personal
+// average. Acts as an emotional anchor — not a performance target.
+//
+// Height: uses style={{ height: N }} instead of a Tailwind class
+// because ResponsiveContainer needs an explicit pixel ancestor.
 // ============================================================
 
 import type { DashboardDataPoint } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/Card";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface LineConfig {
   dataKey: keyof DashboardDataPoint;
@@ -36,9 +31,20 @@ interface TrendChartProps {
   lines: LineConfig[];
   /** optional fixed y-axis range, e.g. [1, 10] for score fields. */
   yDomain?: [number, number];
+  // Personal averages for each metric — rendered as dashed baseline halos
+  baselines?: Partial<Record<keyof DashboardDataPoint, number>>;
+  height?: number;
 }
 
-export function TrendChart({ title, description, data, lines, yDomain }: TrendChartProps) {
+export function TrendChart({
+  title,
+  description,
+  data,
+  lines,
+  yDomain,
+  baselines,
+  height = 240,
+}: TrendChartProps) {
   return (
     <Card>
       <CardHeader>
@@ -48,10 +54,31 @@ export function TrendChart({ title, description, data, lines, yDomain }: TrendCh
 
       <CardContent>
         {/* text-* classes here are inherited by currentColor in the SVG below */}
-        <div className="text-ink-subtle dark:text-[#555250]" style={{ height: 256, minHeight: 256 }}>
+        <div className="text-ink-subtle dark:text-[#555250]" style={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.15} />
+            <AreaChart
+              data={data}
+              margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+            >
+              {/* ── Gradient definitions ─────────────────────── */}
+              {/* SVG <defs> can live directly inside an AreaChart */}
+              <defs>
+                {lines.map((line) => (
+                  <linearGradient
+                    key={`grad-${String(line.dataKey)}`}
+                    id={`grad-${String(line.dataKey)}`}
+                    x1="0" y1="0" x2="0" y2="1"
+                  >
+                    {/* Top of gradient: line color at 20% opacity */}
+                    <stop offset="5%"  stopColor={line.color} stopOpacity={0.20} />
+                    {/* Bottom of gradient: fully transparent */}
+                    <stop offset="95%" stopColor={line.color} stopOpacity={0} />
+                  </linearGradient>
+                ))}
+              </defs>
+
+
+              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.12} />
 
               <XAxis
                 dataKey="date"
@@ -71,22 +98,43 @@ export function TrendChart({ title, description, data, lines, yDomain }: TrendCh
 
               <Tooltip content={<ChartTooltip lines={lines} />} />
 
+              {/* ── Baseline halos ────────────────────────────── */}
+              {/* dashed reference lines for each metric's personal average.
+                  Rendered BEFORE the areas so they sit behind the data. */}
+              {lines.map((line) => {
+                const baseVal = baselines?.[line.dataKey];
+                if (baseVal === undefined) return null;
+                return (
+                  <ReferenceLine
+                    key={`base-${String(line.dataKey)}`}
+                    y={baseVal}
+                    stroke={line.color}
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.35}
+                    strokeWidth={1.5}
+                  />
+                );
+              })}
+
+              {/* ── area lines with gradient fills ───────────── */}
               {lines.map((line) => (
-                <Line
-                  key={line.dataKey}
+                <Area
+                  key={String(line.dataKey)}
                   type="monotone"
                   dataKey={line.dataKey}
                   name={line.label}
                   stroke={line.color}
                   strokeWidth={2}
-                  dot={{ r: 3, fill: line.color }}
-                  // connectNulls: if a session is missing this metric
-                  // (e.g. wpm null), draw through the gap rather than
-                  // breaking the line.
+                  // References the gradient defined in <defs> above
+                  fill={`url(#grad-${String(line.dataKey)})`}
+                  // No dots on the line — cleaner, less clinical
+                  dot={false}
+                  // Subtle dot on hover
+                  activeDot={{ r: 4, strokeWidth: 0, fill: line.color }}
                   connectNulls
                 />
               ))}
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </CardContent>
@@ -112,18 +160,18 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-lg px-3 py-2 shadow-sm">
-      <p className="text-xs font-medium text-ink dark:text-[#F0EDE8] mb-1">{label}</p>
+    <div className="bg-white dark:bg-dark-surface border border-parchment dark:border-dark-border rounded-lg px-3 py-2.5 shadow-sm">
+      <p className="text-xs font-medium text-ink dark:text-[#f0ede8] mb-1.5">{label}</p>
       {payload.map((entry) => {
         const config = lines.find((l) => l.dataKey === entry.dataKey);
         return (
-          <p key={entry.dataKey} className="text-xs flex items-center gap-1.5">
+          <p key={entry.dataKey} className="text-xs flex items-center gap-2">
             <span
-              className="w-2 h-2 rounded-full inline-block"
+              className="w-2 h-2 rounded-full inline-block shrink-0"
               style={{ backgroundColor: config?.color }}
             />
             <span className="text-ink-muted dark:text-[#888480]">{config?.label}:</span>
-            <span className="font-medium text-ink dark:text-[#D8D5CE]">{entry.value}</span>
+            <span className="font-medium text-ink dark:text-[#d8d5ce]">{entry.value}</span>
           </p>
         );
       })}
