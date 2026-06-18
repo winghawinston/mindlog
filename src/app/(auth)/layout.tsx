@@ -105,7 +105,7 @@ export default function AuthLayout({
           <span className="block text-5xl text-white/10 font-serif leading-none mb-4">
             &ldquo;
           </span>
-          <blockquote className="text-xl font-medium text-white/75 leading-relaxed italic mb-6">
+          <blockquote className="text-xl font-medium text-white/75 leading-relaxed italic mb-6 max-w-md mx-auto">
             {quote.text}
           </blockquote>
           <cite className="text-sm text-white/30 not-italic">
