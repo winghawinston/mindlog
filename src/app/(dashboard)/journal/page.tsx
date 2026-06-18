@@ -3,14 +3,19 @@
 // ============================================================
 // JOURNAL PAGE — two phases:
 //
-// Phase A — Writing:
-//   Textarea + passive typing tracker running in background.
-//   Live stats bar shows WPM, word count, timer.
-//   Autosaves every 30 seconds.
+// Phase A — Mood check:
+//   User rates 5 emotional dimensions BEFORE writing. Pre-writing
+//   ratings capture a truer baseline — post-writing state can be
+//   altered by the catharsis of the session itself.
+//   Skipped automatically if a draft is restored from localStorage,
+//   since the original mood scores are restored alongside the content.
 //
-// Phase B — Self-report:
-//   After clicking "Done writing", user rates mood/stress/etc.
-//   Submitting sends everything to DB and redirects to dashboard.
+// Phase B — Writing canvas:
+//   Textarea + passive typing tracker running in the background.
+//   Live stats bar shows WPM, word count, and elapsed time.
+//   Autosaves to Supabase every 30 seconds.
+//   "Done writing" validates, captures final keystroke metrics,
+//   shows a context-aware toast, and submits everything to the DB.
 // ============================================================
 
 import { useTypingTracker } from "@/hooks/useTypingTracker";
@@ -20,9 +25,9 @@ import type { ActionState } from "@/types";
 import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/Card";
-import { useWritingStore } from "@/store/writingStore";
 import { Toast } from "@/components/ui/Toast";
 import type { ComputedMetrics } from "@/hooks/useTypingTracker";
+import { ScoreInput } from "@/components/ui/ScoreInput";
 
 const MIN_WORDS = 10;
 const AUTOSAVE_INTERVAL_MS = 30_000; // 30 seconds
@@ -36,9 +41,15 @@ interface StoredDraft {
   content: string;
   sessionId: string | null;
   savedAt: string; // ISO timestamp, shown to user as "Restored from {time}"
+  // ADDED: scores are saved alongside content so crash recovery can
+  // skip the mood-check phase and restore the original ratings.
+  scores?: Record<string, number>;
 }
 
-type JournalStep = "writing" | "self-report";
+// ── Two phases now: mood check BEFORE writing, then writing + submit ──
+// WHY: pre-writing mood captures emotional state before any catharsis
+// from the journaling itself. More scientifically valid as a baseline.
+type JournalStep = "mood-check" | "writing";
 
 // ── Score definitions for the self-report step ──────────────
 const SCORE_FIELDS = [
@@ -51,6 +62,32 @@ const SCORE_FIELDS = [
 
 type ScoreName = typeof SCORE_FIELDS[number]["name"];
 
+// context-aware toast message based on pre-writing mood score
+function getMoodToast(mood: number): { message: string; subtext: string } {
+  if (mood <= 3) {
+    return {
+      message: "That took courage to write.",
+      subtext: "Even on hard days, showing up matters.",
+    };
+  }
+  if (mood <= 5) {
+    return {
+      message: "Session captured.",
+      subtext: "Your rhythm is building a picture over time.",
+    };
+  }
+  if (mood <= 7) {
+    return {
+      message: "Good session.",
+      subtext: "Keep the momentum going.",
+    };
+  }
+  return {
+    message: "Great energy today.",
+    subtext: "Cadence noticed — high days look different when you type.",
+  };
+}
+
 export default function JournalPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,16 +97,11 @@ export default function JournalPage() {
   // textareaRef.current is null and wordCount/wpm compute as 0.
   const capturedMetricsRef = useRef<ComputedMetrics | null>(null);
 
-  const [step, setStep]           = useState<JournalStep>("writing");
+  const [step, setStep]           = useState<JournalStep>("mood-check");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [content, setContent]     = useState("");
   const [error, setError]         = useState<string | null>(null);
   const [autosaveLabel, setAutosaveLabel] = useState<"saved" | "saving" | "unsaved">("unsaved");
-
-  // ADDED: toast state for the completion animation
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastSubtext, setToastSubtext] = useState("");
 
   // ADDED: restore notice — shown briefly when a draft was recovered
   const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
@@ -83,10 +115,12 @@ export default function JournalPage() {
     fatigue_score: 5,
   });
 
-  const [isSubmitPending, startSubmitTransition] = useTransition();
+  // ADDED: toast state for the completion animation
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastSubtext, setToastSubtext] = useState("");
 
-  // ADDED: signal to the nav that we're in writing mode
-  const setCanvasMode = useWritingStore((state) => state.setCanvasMode);
+  const [isSubmitPending, startSubmitTransition] = useTransition();
 
   // typing tracker only runs during the writing phase
   const { liveMetrics, getComputedMetrics } = useTypingTracker(
@@ -106,6 +140,17 @@ export default function JournalPage() {
           const draft: StoredDraft = JSON.parse(raw);
           if (draft.content.trim()) {
             setContent(draft.content);
+
+            // ADDED: if the draft includes mood scores from the original session,
+            // restore them and skip mood-check entirely.
+            // WHY: the saved scores correspond to this specific draft — showing
+            // mood-check again would capture a different (current) emotional state
+            // unrelated to the session being continued.
+            if (draft.scores) {
+              setScores(draft.scores as Record<ScoreName, number>);
+              setStep("writing"); // skip mood-check — scores already captured
+            }
+
             const savedTime = new Date(draft.savedAt).toLocaleTimeString(
               "en-US",
               { hour: "numeric", minute: "2-digit" }
@@ -128,8 +173,8 @@ export default function JournalPage() {
     })();
 
     // Clear canvas mode when leaving the journal page
-    return () => setCanvasMode(false);
-  }, [setCanvasMode]);
+    // return () => setCanvasMode(false);
+  }, []);
 
   // ── Save to localStorage on every content change ─────────
   // This is the actual crash-recovery save — runs on every keystroke.
@@ -142,16 +187,19 @@ export default function JournalPage() {
         content,
         sessionId,
         savedAt: new Date().toISOString(),
+        // ADDED: only save scores once the user has passed mood-check.
+        // Before that, step === "mood-check" and scores aren't finalised yet.
+        ...(step === "writing" && { scores }),
       };
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
     } catch {
       // localStorage write failed (e.g. private browsing quota) — silent
     }
-  }, [content, sessionId]);
+  }, [content, sessionId, step, scores]);
 
   // ── Autosave every 30 seconds ───────────────────────────
   const doAutosave = useCallback(async () => {
-    if (!sessionId || step !== "writing") return;
+    if (!sessionId || step !== "writing" || !content.trim()) return;
 
     setAutosaveLabel("saving");
     await autosaveSessionAction(
@@ -172,38 +220,28 @@ export default function JournalPage() {
   // const handleFocus = () => setCanvasMode(true);
   // const handleBlur  = () => setCanvasMode(false);
 
-  // ── "Done writing" → validate and move to self-report ──
-  // CHANGED: capture metrics HERE, before step changes and textarea unmounts
+  // ── Phase 1 → Phase 2: start writing ──────────────────────
+  const handleStartWriting = () => {
+    setError(null);
+    setStep("writing");
+  };
+
+  // ── Phase 2: done writing → validate → submit ─────────────
+  // CHANGED: "Done writing" now submits directly — no third step.
+  // WHY: the self-report is already captured (mood-check phase above).
+  // Capturing metrics is safe here because the textarea is still mounted.
   const handleDoneWriting = () => {
     setError(null);
+
     if (liveMetrics.wordCount < MIN_WORDS) {
       setError(`Please write at least ${MIN_WORDS} words before submitting.`);
       return;
     }
-    // Textarea is still mounted here — ref is valid — metrics are correct
-    capturedMetricsRef.current = getComputedMetrics();
-    setCanvasMode(false);
-    setStep("self-report");
-
-    // ADDED: show completion toast with session stats
-    const mins = Math.floor(liveMetrics.elapsedSecs / 60);
-    const secs = liveMetrics.elapsedSecs % 60;
-    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-    setToastMessage("Session captured.");
-    setToastSubtext(`${liveMetrics.wordCount} words · ${timeStr} · ${liveMetrics.wpm} wpm`);
-    setToastVisible(true);
-  };
-
-  // ── Submit everything ────────────────────────────────────
-  // CHANGED: use capturedMetricsRef instead of calling getComputedMetrics() again
-  const handleSubmit = () => {
-    if (!sessionId) return;
-    setError(null);
 
     // Use what we captured at "Done writing" time.
     // Fallback to getComputedMetrics() for safety, but in practice
     // capturedMetricsRef.current will always be set by this point.
-    const metrics = capturedMetricsRef.current ?? getComputedMetrics();
+    const metrics: ComputedMetrics = getComputedMetrics();
 
     // CHANGED: clear localStorage BEFORE the server call, not after.
     // WHY: submitSessionAction calls redirect() server-side, which navigates
@@ -214,21 +252,34 @@ export default function JournalPage() {
       localStorage.removeItem(DRAFT_STORAGE_KEY);
     } catch { /* silent */ }
 
-    const formData = new FormData();
-    formData.set("session_id",   sessionId);
-    formData.set("content",      content);
-    formData.set("word_count",   String(liveMetrics.wordCount));
-    formData.set("duration_secs", String(metrics.durationSecs));
-    formData.set("metrics",      JSON.stringify(metrics));
+    // show context-aware toast immediately (before redirect)
+    const { message, subtext } = getMoodToast(scores.mood_score);
+    setToastMessage(message);
+    setToastSubtext(subtext);
+    setToastVisible(true);
 
-    Object.entries(scores).forEach(([key, val]) => {
-      formData.set(key, String(val));
-    });
+    // ADDED: show completion toast with session stats
+    const mins = Math.floor(liveMetrics.elapsedSecs / 60);
+    const secs = liveMetrics.elapsedSecs % 60;
+    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    setToastSubtext(`${liveMetrics.wordCount} words · ${timeStr} · ${liveMetrics.wpm} wpm`);
+
+    const formData = new FormData();
+    formData.set("session_id",    sessionId!);
+    formData.set("content",       content);
+    formData.set("word_count",    String(liveMetrics.wordCount));
+    formData.set("duration_secs", String(metrics.durationSecs));
+    formData.set("metrics",       JSON.stringify(metrics));
+
+    Object.entries(scores).forEach(([key, val]) => formData.set(key, String(val)));
 
     startSubmitTransition(async () => {
       const result: ActionState = await submitSessionAction({}, formData);
-      if (result?.error) setError(result.error);
-      // No error = redirect happened server-side
+      if (result?.error) {
+        setError(result.error);
+        setToastVisible(false);
+      }
+      // No error = server called redirect("/dashboard")
     });
   };
 
@@ -247,19 +298,16 @@ export default function JournalPage() {
           "flex items-center justify-between px-6 py-4 shrink-0",
           "border-b border-parchment dark:border-dark-border",
           "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm",
-          // Header also softens in canvas mode
-          "transition-opacity duration-500",
-          step === "writing" ? "opacity-100" : "opacity-100"
         )}
       >
         <div>
           <h1 className="text-base font-medium text-ink dark:text-[#f0ede8]">
-            {step === "writing" ? "Today's entry" : "How are you feeling?"}
+            {step === "mood-check" ? "Before you write…" : "Today's entry"}
           </h1>
           <p className="text-xs text-ink-subtle dark:text-[#555250]">
-            {step === "writing"
-              ? "Write freely. Your typing is being recorded passively."
-              : "Rate each dimension honestly. There are no right answers."}
+            {step === "mood-check"
+              ? "Cadence works best when you're honest with yourself. How are you feeling right now, before you start writing?"
+              : "Write freely. Your typing is being captured passively. Don't worry about editing — just get your thoughts out. When you're done, click the button to submit."}
           </p>
         </div>
 
@@ -269,15 +317,16 @@ export default function JournalPage() {
             size="md"
             onClick={handleDoneWriting}
             disabled={!sessionId}
+            isLoading={isSubmitPending}
           >
-            Done writing →
+            {isSubmitPending ? "Saving…" : "Done writing →"}
           </Button>
         )}
       </header>
 
       {/* ── error banner ─────────────────────────────────── */}
       {error && (
-        <div className="px-6 py-3 bg-[#fcecea] dark:bg-[#2A1414] border-b border-[#EDAAA6] dark:border-[#5a2020]" role="alert">
+        <div className="px-6 py-3 bg-[#fcecea] dark:bg-[#2a1414] border-b border-[#edaaa6] dark:border-[#5a2020]" role="alert">
           <p className="text-sm text-danger dark:text-[#e87070]">{error}</p>
         </div>
       )}
@@ -289,10 +338,47 @@ export default function JournalPage() {
         </div>
       )}
 
-      {/* ── WRITING PHASE ────────────────────────────────── */}
+      {/* ── PHASE 1: Mood check (before writing) ─────────── */}
+      {step === "mood-check" && (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-lg mx-auto space-y-6">
+            {SCORE_FIELDS.map((field) => (
+              <Card key={field.name} className="p-5">
+                <ScoreInput
+                  label={field.label}
+                  value={scores[field.name]}
+                  onChange={(val) =>
+                    setScores((prev) => ({ ...prev, [field.name]: val }))
+                  }
+                  lowLabel={field.low}
+                  highLabel={field.high}
+                  disabled={!sessionId}
+                />
+              </Card>
+            ))}
+
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={handleStartWriting}
+              disabled={!sessionId}
+            >
+              Start writing →
+            </Button>
+
+            <p className="text-xs text-ink-subtle dark:text-[#555250] text-center pb-4">
+              These ratings are captured before you write so they reflect your
+              true state — not one shaped by the session itself.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── PHASE 2: Writing canvas ───────────────────────── */}
       {step === "writing" && (
         <>
-          {/* Textarea — fills remaining height */}
+          {/* textarea — fills remaining height */}
           <div className="flex-1 p-6 overflow-auto">
             <textarea
               ref={textareaRef}
@@ -347,72 +433,6 @@ export default function JournalPage() {
             </div>
           </footer>
         </>
-      )}
-
-      {/* ── SELF-REPORT PHASE ────────────────────────────── */}
-      {step === "self-report" && (
-        <div className="flex-1 overflow-auto p-6">
-          <div className="max-w-lg mx-auto space-y-4">
-            {SCORE_FIELDS.map((field) => (
-              <Card key={field.name} className="p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-ink dark:text-[#d8d5ce]">
-                    {field.label}
-                  </span>
-                  <span className="text-lg font-medium text-forest dark:text-sage w-8 text-right">
-                    {scores[field.name]}
-                  </span>
-                </div>
-
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={scores[field.name]}
-                  onChange={(e) =>
-                    setScores((prev) => ({
-                      ...prev,
-                      [field.name]: parseInt(e.target.value, 10),
-                    }))
-                  }
-                  className="w-full accent-forest dark:accent-sage cursor-pointer"
-                />
-
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-ink-subtle dark:text-[#555250]">
-                    {field.low}
-                  </span>
-                  <span className="text-xs text-ink-subtle dark:text-[#555250]">
-                    {field.high}
-                  </span>
-                </div>
-              </Card>
-            ))}
-
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="secondary"
-                size="lg"
-                className="flex-1"
-                onClick={() => { setStep("writing"); setError(null); }}
-                disabled={isSubmitPending}
-              >
-                ← Back to writing
-              </Button>
-              <Button
-                variant="primary"
-                size="lg"
-                className="flex-1"
-                onClick={handleSubmit}
-                isLoading={isSubmitPending}
-                disabled={!sessionId}
-              >
-                {isSubmitPending ? "Saving…" : "Submit session"}
-              </Button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* ── Toast notification ────────────────────────────────── */}
