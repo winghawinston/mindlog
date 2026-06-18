@@ -8,6 +8,10 @@
 // This pattern is used by Notion, Linear, Vercel, and most quality SaaS.
 const QUOTES = [
   {
+    text: "Above all, don't lie to yourself. The man who lies to himself and listens to his own lie comes to a point that he cannot distinguish the truth within him, or around him, and so loses all respect for himself and for others. And having no respect he ceases to love.",
+    author: "Fyodor Dostoevsky",
+  },
+  {
     text: "Writing is the painting of the voice.",
     author: "Voltaire",
   },
