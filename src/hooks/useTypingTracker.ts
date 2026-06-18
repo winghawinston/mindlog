@@ -222,13 +222,17 @@ export function useTypingTracker(
     const textarea = textareaRef.current;
     if (!textarea || !isActive) return;
 
-    if (!sessionStart.current) {
-      sessionStart.current = Date.now();
-    }
-
     const onKeydown = (e: KeyboardEvent) => {
       const now = Date.now();
       const key = e.key;
+
+      // CHANGED: sessionStart is now set here (first keystroke) instead of
+      // when isActive becomes true. WHY: setting it on page load caused the
+      // timer to start immediately, making restored drafts show inflated WPM
+      // (e.g. 500 words / 2 seconds = 15,000 WPM).
+      if (!sessionStart.current) {
+        sessionStart.current = now;
+      }
 
       totalKeystrokes.current++;
       if (!NON_PRODUCTIVE_KEYS.has(key)) productiveKeys.current++;

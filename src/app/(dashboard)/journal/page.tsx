@@ -20,19 +20,33 @@ import type { ActionState } from "@/types";
 import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/Card";
+import { useWritingStore } from "@/store/writingStore";
+import { Toast } from "@/components/ui/Toast";
+import type { ComputedMetrics } from "@/hooks/useTypingTracker";
 
 const MIN_WORDS = 10;
 const AUTOSAVE_INTERVAL_MS = 30_000; // 30 seconds
+
+// ADDED: localStorage key for crash-recovery draft persistence.
+// Keyed to "cadence" not the session ID so it survives page refreshes
+// before a session ID is even created.
+const DRAFT_STORAGE_KEY = "cadence-journal-draft";
+
+interface StoredDraft {
+  content: string;
+  sessionId: string | null;
+  savedAt: string; // ISO timestamp, shown to user as "Restored from {time}"
+}
 
 type JournalStep = "writing" | "self-report";
 
 // ── Score definitions for the self-report step ──────────────
 const SCORE_FIELDS = [
-  { name: "mood_score",    label: "Mood",    low: "Very low",  high: "Excellent" },
-  { name: "stress_score",  label: "Stress",  low: "None",      high: "Overwhelming" },
-  { name: "anxiety_score", label: "Anxiety", low: "None",      high: "Severe" },
-  { name: "focus_score",   label: "Focus",   low: "Scattered", high: "Sharp" },
-  { name: "fatigue_score", label: "Fatigue", low: "Energised", high: "Exhausted" },
+  { name: "mood_score",    label: "Mood",    low: "Struggling",      high: "Thriving" },
+  { name: "stress_score",  label: "Stress",  low: "Completely calm", high: "Overwhelming" },
+  { name: "anxiety_score", label: "Anxiety", low: "At ease",         high: "On edge" },
+  { name: "focus_score",   label: "Focus",   low: "Scattered",       high: "Locked in" },
+  { name: "fatigue_score", label: "Fatigue", low: "Fully rested",    high: "Exhausted" },
 ] as const;
 
 type ScoreName = typeof SCORE_FIELDS[number]["name"];
@@ -44,13 +58,21 @@ export default function JournalPage() {
   // WHY: calling getComputedMetrics() on submit is too late — the textarea
   // has already unmounted (it's inside {step === "writing" && (...)}), so
   // textareaRef.current is null and wordCount/wpm compute as 0.
-  const capturedMetricsRef = useRef<ReturnType<typeof getComputedMetrics> | null>(null);
+  const capturedMetricsRef = useRef<ComputedMetrics | null>(null);
 
   const [step, setStep]           = useState<JournalStep>("writing");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [content, setContent]     = useState("");
   const [error, setError]         = useState<string | null>(null);
   const [autosaveLabel, setAutosaveLabel] = useState<"saved" | "saving" | "unsaved">("unsaved");
+
+  // ADDED: toast state for the completion animation
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastSubtext, setToastSubtext] = useState("");
+
+  // ADDED: restore notice — shown briefly when a draft was recovered
+  const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
 
   // self-report scores — all default to 5 (midpoint)
   const [scores, setScores] = useState<Record<ScoreName, number>>({
@@ -63,6 +85,9 @@ export default function JournalPage() {
 
   const [isSubmitPending, startSubmitTransition] = useTransition();
 
+  // ADDED: signal to the nav that we're in writing mode
+  const setCanvasMode = useWritingStore((state) => state.setCanvasMode);
+
   // typing tracker only runs during the writing phase
   const { liveMetrics, getComputedMetrics } = useTypingTracker(
     textareaRef,
@@ -72,6 +97,28 @@ export default function JournalPage() {
   // ── Create draft session on mount ───────────────────────
   useEffect(() => {
     (async () => {
+      // ADDED: check localStorage for an existing draft before creating a
+      // new session. This is the crash-recovery mechanism — if the user
+      // closed the tab mid-session, their content is still here.
+      try {
+        const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (raw) {
+          const draft: StoredDraft = JSON.parse(raw);
+          if (draft.content.trim()) {
+            setContent(draft.content);
+            const savedTime = new Date(draft.savedAt).toLocaleTimeString(
+              "en-US",
+              { hour: "numeric", minute: "2-digit" }
+            );
+            setRestoredNotice(`Draft restored from ${savedTime}`);
+            // Clear the notice after 4 seconds
+            setTimeout(() => setRestoredNotice(null), 4000);
+          }
+        }
+      } catch {
+        // localStorage read failed — silent, non-fatal
+      }
+
       const result = await createDraftSessionsAction();
       if ("sessionId" in result) {
         setSessionId(result.sessionId);
@@ -79,7 +126,28 @@ export default function JournalPage() {
         setError("Could not start session. Please refresh the page.");
       }
     })();
-  }, []);
+
+    // Clear canvas mode when leaving the journal page
+    return () => setCanvasMode(false);
+  }, [setCanvasMode]);
+
+  // ── Save to localStorage on every content change ─────────
+  // This is the actual crash-recovery save — runs on every keystroke.
+  // The autosave to Supabase runs on a 30s interval separately.
+  useEffect(() => {
+    if (!content.trim()) return; // don't save empty content
+
+    try {
+      const draft: StoredDraft = {
+        content,
+        sessionId,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // localStorage write failed (e.g. private browsing quota) — silent
+    }
+  }, [content, sessionId]);
 
   // ── Autosave every 30 seconds ───────────────────────────
   const doAutosave = useCallback(async () => {
@@ -100,6 +168,10 @@ export default function JournalPage() {
     return () => clearInterval(interval);
   }, [doAutosave]);
 
+  // ── Canvas mode: signal when textarea is focused ──────────
+  const handleFocus = () => setCanvasMode(true);
+  const handleBlur  = () => setCanvasMode(false);
+
   // ── "Done writing" → validate and move to self-report ──
   // CHANGED: capture metrics HERE, before step changes and textarea unmounts
   const handleDoneWriting = () => {
@@ -110,7 +182,16 @@ export default function JournalPage() {
     }
     // Textarea is still mounted here — ref is valid — metrics are correct
     capturedMetricsRef.current = getComputedMetrics();
+    setCanvasMode(false);
     setStep("self-report");
+
+    // ADDED: show completion toast with session stats
+    const mins = Math.floor(liveMetrics.elapsedSecs / 60);
+    const secs = liveMetrics.elapsedSecs % 60;
+    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    setToastMessage("Session captured.");
+    setToastSubtext(`${liveMetrics.wordCount} words · ${timeStr} · ${liveMetrics.wpm} wpm`);
+    setToastVisible(true);
   };
 
   // ── Submit everything ────────────────────────────────────
@@ -123,6 +204,15 @@ export default function JournalPage() {
     // Fallback to getComputedMetrics() for safety, but in practice
     // capturedMetricsRef.current will always be set by this point.
     const metrics = capturedMetricsRef.current ?? getComputedMetrics();
+
+    // CHANGED: clear localStorage BEFORE the server call, not after.
+    // WHY: submitSessionAction calls redirect() server-side, which navigates
+    // before the client's callback can run localStorage.removeItem().
+    // Clearing here is safe — content is in React state; if submission fails,
+    // the user stays on this page and can retry with content intact.
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch { /* silent */ }
 
     const formData = new FormData();
     formData.set("session_id",   sessionId);
@@ -138,7 +228,7 @@ export default function JournalPage() {
     startSubmitTransition(async () => {
       const result: ActionState = await submitSessionAction({}, formData);
       if (result?.error) setError(result.error);
-      // No error = submitSessionAction called redirect("/dashboard")
+      // No error = redirect happened server-side
     });
   };
 
@@ -152,9 +242,18 @@ export default function JournalPage() {
   return (
     <div className="h-screen flex flex-col">
       {/* ── top bar ───────────────────────────────────────  */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-parchment dark:border-dark-border bg-white dark:bg-dark-surface shrink-0">
+      <header
+        className={cn(
+          "flex items-center justify-between px-6 py-4 shrink-0",
+          "border-b border-parchment dark:border-dark-border",
+          "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm",
+          // Header also softens in canvas mode
+          "transition-opacity duration-500",
+          step === "writing" ? "opacity-100" : "opacity-100"
+        )}
+      >
         <div>
-          <h1 className="text-base font-medium text-ink dark:text-[#F0EDE8]">
+          <h1 className="text-base font-medium text-ink dark:text-[#f0ede8]">
             {step === "writing" ? "Today's entry" : "How are you feeling?"}
           </h1>
           <p className="text-xs text-ink-subtle dark:text-[#555250]">
@@ -178,8 +277,15 @@ export default function JournalPage() {
 
       {/* ── error banner ─────────────────────────────────── */}
       {error && (
-        <div className="px-6 py-3 bg-[#FCECEA] dark:bg-[#2A1414] border-b border-[#EDAAA6] dark:border-[#5A2020]" role="alert">
-          <p className="text-sm text-danger dark:text-[#E87070]">{error}</p>
+        <div className="px-6 py-3 bg-[#fcecea] dark:bg-[#2A1414] border-b border-[#EDAAA6] dark:border-[#5a2020]" role="alert">
+          <p className="text-sm text-danger dark:text-[#e87070]">{error}</p>
+        </div>
+      )}
+
+      {/* ── draft restored notice ─────────────────────────────── */}
+      {restoredNotice && (
+        <div className="px-6 py-2 bg-mint/30 dark:bg-[#1a2e1e] border-b border-sage/20 dark:border-sage/10">
+          <p className="text-xs text-forest dark:text-sage">{restoredNotice}</p>
         </div>
       )}
 
@@ -198,7 +304,7 @@ export default function JournalPage() {
               placeholder="Start writing your thoughts, feelings, or anything on your mind…"
               className={cn(
                 "w-full h-full min-h-100 resize-none",
-                "text-base leading-relaxed text-ink dark:text-[#D8D5CE]",
+                "text-base leading-relaxed text-ink dark:text-[#d8d5ce]",
                 "bg-transparent placeholder:text-ink-subtle dark:placeholder:text-[#444440]",
                 "focus:outline-none"
               )}
@@ -207,7 +313,7 @@ export default function JournalPage() {
             />
           </div>
 
-          {/* Stats bar */}
+          {/* stats bar */}
           <footer className="px-6 py-3 border-t border-parchment dark:border-dark-border bg-white dark:bg-dark-surface shrink-0">
             <div className="flex items-center gap-6 text-xs text-ink-subtle dark:text-[#555250]">
               <span>
@@ -250,7 +356,7 @@ export default function JournalPage() {
             {SCORE_FIELDS.map((field) => (
               <Card key={field.name} className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-ink dark:text-[#D8D5CE]">
+                  <span className="text-sm font-medium text-ink dark:text-[#d8d5ce]">
                     {field.label}
                   </span>
                   <span className="text-lg font-medium text-forest dark:text-sage w-8 text-right">
@@ -308,6 +414,14 @@ export default function JournalPage() {
           </div>
         </div>
       )}
+
+      {/* ── Toast notification ────────────────────────────────── */}
+      <Toast
+        visible={toastVisible}
+        message={toastMessage}
+        subtext={toastSubtext}
+        onDismiss={() => setToastVisible(false)}
+      />
     </div>
   )
 }
