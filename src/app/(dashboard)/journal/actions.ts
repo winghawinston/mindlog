@@ -76,6 +76,10 @@ export async function submitSessionAction(
   const wordCount  = parseInt(formData.get("word_count")    as string, 10) || 0;
   const durationSecs = parseInt(formData.get("duration_secs") as string, 10) || 0;
 
+  // ADDED: title and energy level
+  const title       = (formData.get("title")        as string)?.trim() || null;
+  const energyLevel = (formData.get("energy_level") as string) || null;
+
   // minimum entry length guard
   if (wordCount < 10) {
     return { error: "Your entry is too short. Please write at least a few sentences before submitting." };
@@ -110,6 +114,8 @@ export async function submitSessionAction(
     .from("journaling_sessions")
     .update({
       content,
+      title,                              // ADDED
+      energy_level: energyLevel || null,  // ADDED
       word_count:   wordCount,
       duration_secs: durationSecs,
       status:       "submitted",
