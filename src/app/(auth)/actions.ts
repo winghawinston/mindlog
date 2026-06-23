@@ -42,25 +42,38 @@ export async function loginAction(
 
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
-    password,
-  })
+  // CHANGED: wrapped in try/catch to distinguish network errors from auth errors.
+  // WHY: supabase throws a TypeError when the request times out, rather than
+  // returning { error }. Without this, any network issue shows "Invalid password".
+  try {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password
+    });
 
-  if (error) {
-    // ADDED: log the real error server-side so you can see it in your terminal.
-    // Always log the actual error on the server, return a safe message to the client.
-    // The user sees "Invalid email or password" — you see the real reason in terminal.
-    console.error("[login] Supabase error:", error.message);
-    
-    // Supabase returns "Email not confirmed" if the user tries to log in before verifying their email.
-    if (error?.message.toLowerCase().includes("email not confirmed")) {
-      return { error: "Please verify your email before logging in. Check your inbox." };
+    if (error) {
+      // ADDED: log the real error server-side so you can see it in your terminal.
+      // Always log the actual error on the server, return a safe message to the client.
+      // The user sees "Invalid email or password" — you see the real reason in terminal.
+      console.error("[login] Supabase error:", error.message);
+      
+      // Supabase returns "Email not confirmed" if the user tries to log in before verifying their email.
+      if (error?.message.toLowerCase().includes("email not confirmed")) {
+        return { error: "Please verify your email before logging in. Check your inbox." };
+      }
+      
+      // Supabase returns "Invalid login credentials" for both wrong email
+      // and wrong passwrd — this is intentional (prevents user enumeration)
+      return { error: "Invalid email or password. Please try again."};
     }
-    
-    // Supabase returns "Invalid login credentials" for both wrong email
-    // and wrong passwrd — this is intentional (prevents user enumeration)
-    return { error: "Invalid email or password. Please try again."};
+  } catch (e) {
+    const isNetworkError = e instanceof TypeError && e.message.includes("fetch failed");
+
+    if (isNetworkError) {
+      return { error: "Network error. Please check your connection and try again." };
+    }
+
+    return { error: "Something went wrong. Please try again." };
   }
 
   // check if this user has MFA enrolled and needs to complete it.
@@ -177,31 +190,44 @@ export async function signupAction(
 
   const supabase =  await createClient();
 
-  const { data, error } = await supabase.auth.signUp({
-    email: email.trim().toLowerCase(),
-    password,
-    // no emailRedirectTo — we're using OTP verification instead of email links, so the user stays in the app and doesn't lose session context
-    // the user will enter the code manually in-app
-  });
-    
-  // handle actual system errors first
-  if (error) {
-    // "User already registered" is the Supabase message for duplicate email
-    // ADDED: same pattern — real error in your terminal, safe message to user
-    console.error("[signup] Supabase error:", error.message, "| code:", error.status);
+  // CHANGED: wrapped in try/catch to distinguish network errors from auth errors.
+  // WHY: supabase throws a TypeError when the request times out, rather than
+  // returning { error }. Without this, any network issue shows "Invalid password".
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      // no emailRedirectTo — we're using OTP verification instead of email links, so the user stays in the app and doesn't lose session context
+      // the user will enter the code manually in-app
+    });
+      
+    // handle actual system errors first
+    if (error) {
+      // "User already registered" is the Supabase message for duplicate email
+      // ADDED: same pattern — real error in your terminal, safe message to user
+      console.error("[signup] Supabase error:", error.message, "| code:", error.status);
 
-    // When "Confirm Email" is OFF, Supabase sends a 422 error for duplicates
-    if (error.message.includes("already registered") || error.status === 422) {
-      return { error: "An account with this email already exists." };
+      // When "Confirm Email" is OFF, Supabase sends a 422 error for duplicates
+      if (error.message.includes("already registered") || error.status === 422) {
+        return { error: "An account with this email already exists." };
+      }
+      return { error: "Could not create account. Please try again." };
     }
-    return { error: "Could not create account. Please try again." };
-  }
 
-  // ADDED: detect existing email without Supabase returning an error.
-  // When email already exists with confirmation ON, Supabase returns
-  // success but data.user.identities is an empty array.
-  if (data.user && data.user.identities?.length === 0) {
-    return { error: "An account with this email already exists. Please sign in instead." };
+    // ADDED: detect existing email without Supabase returning an error.
+    // When email already exists with confirmation ON, Supabase returns
+    // success but data.user.identities is an empty array.
+    if (data.user && data.user.identities?.length === 0) {
+      return { error: "An account with this email already exists. Please sign in instead." };
+    }
+  } catch (e) {
+    const isNetworkError = e instanceof TypeError && e.message.includes("fetch failed");
+
+    if (isNetworkError) {
+      return { error: "Network error. Please check your connection and try again." };
+    }
+    
+    return { error: "Something went wrong. Please try again." };
   }
 
   // signal the page to show the OTP input step.
