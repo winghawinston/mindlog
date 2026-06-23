@@ -130,17 +130,28 @@ export default function JournalPage() {
   const [error, setError]         = useState<string | null>(null);
   const [autosaveLabel, setAutosaveLabel] = useState<"saved" | "saving" | "unsaved">("unsaved");
 
+  // CHANGED: use useEffect instead of lazy initializer.
+  // WHY: lazy initializer runs synchronously on the client so "Today's entry"
+  // (the SSR value) never actually renders — getTimePlaceholder() always wins.
+  // useEffect runs after hydration, so SSR sends "Today's entry" correctly
+  // and the client updates to the time-aware string after mount.
+  // This is a valid useEffect use: syncing with the browser clock (external system).
   const [titlePlaceholder] = useState(() => {
-    if (typeof window === 'undefined') return "Today's entry"; // SSR fallback
+    if (typeof window !== "undefined") return "Title: Today's entry";
     return getTimePlaceholder();
   });
-  // No setter needed — this value never changes after mount
 
   // ADDED: restore notice — shown briefly when a draft was recovered
   const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
 
   // ADDED: header fades when textarea is focused
   const [isWritingFocused, setIsWritingFocused] = useState(false);
+
+  // ADDED: freezes the live metrics display while submission is in flight.
+  // WHY: isActive on the tracker turns off on step change, but step only
+  // changes server-side (via redirect). During the network wait, the tracker
+  // interval keeps running and WPM/timer keep updating visually.
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // self-report scores — all default to 5 (midpoint)
   const [scores, setScores] = useState<Record<ScoreName, number>>({
@@ -154,10 +165,11 @@ export default function JournalPage() {
   const [isSubmitPending, startSubmitTransition] = useTransition();
   const { toasts, showToast, dismissToast } = useToastStack();
 
-  // typing tracker only runs during the writing phase
+  // CHANGED: added && !isSubmitting — stops the live interval the moment
+  // the user clicks "Done writing", regardless of network speed
   const { liveMetrics, getComputedMetrics } = useTypingTracker(
     textareaRef,
-    step === "writing"
+    step === "writing" && !isSubmitting
   );
 
   // ── Create draft session on mount ───────────────────────
@@ -173,26 +185,42 @@ export default function JournalPage() {
           if (draft.content.trim()) {
             setContent(draft.content);
 
-            if (draft.title) setTitle(draft.title);
-            if (draft.energyLevel) setEnergyLevel(draft.energyLevel);
-
-            // ADDED: if the draft includes mood scores from the original session,
-            // restore them and skip mood-check entirely.
-            // WHY: the saved scores correspond to this specific draft — showing
-            // mood-check again would capture a different (current) emotional state
-            // unrelated to the session being continued.
+            // CHANGED: restructured restore logic.
+            // WHY: the old code only restored scores/step if content was non-empty.
+            // If the user completed mood-check, clicked "Start writing", and
+            // refreshed before typing anything, scores existed but content was ""
+            // so step was never restored — they'd land on mood-check again.
+            // Now: if scores exist, we restore to writing step regardless of content.
             if (draft.scores) {
               setScores(draft.scores as Record<ScoreName, number>);
+              if (draft.title) setTitle(draft.title);
+              if (draft.energyLevel) setEnergyLevel(draft.energyLevel);
+              if (draft.content.trim()) setContent(draft.content);
               setStep("writing"); // skip mood-check — scores already captured
-            }
 
-            const savedTime = new Date(draft.savedAt).toLocaleTimeString(
-              "en-US",
-              { hour: "numeric", minute: "2-digit" }
-            );
-            setRestoredNotice(`Draft restored from ${savedTime}`);
-            // Clear the notice after 4 seconds
-            setTimeout(() => setRestoredNotice(null), 4000);
+              if (draft.content.trim()) {
+                const savedTime = new Date(draft.savedAt).toLocaleTimeString(
+                  "en-US",
+                  { hour: "numeric", minute: "2-digit" }
+                );
+                setRestoredNotice(`Draft restored from ${savedTime}`);
+                // Clear the notice after 4 seconds
+                setTimeout(() => setRestoredNotice(null), 4000);
+              }
+            } else if (draft.content.trim()) {
+              // No scores but has content (old draft format) — restore content
+              // but let them go through mood-check for a fresh rating
+              setContent(draft.content);
+              if (draft.title) setTitle(draft.title);
+              if (draft.energyLevel) setEnergyLevel(draft.energyLevel);
+              const savedTime = new Date(draft.savedAt).toLocaleTimeString(
+                "en-US",
+                { hour: "numeric", minute: "2-digit" }
+              );
+              setRestoredNotice(`Draft restored from ${savedTime}`);
+              // Clear the notice after 4 seconds
+              setTimeout(() => setRestoredNotice(null), 4000);
+            }
           }
         }
       } catch {
@@ -215,7 +243,13 @@ export default function JournalPage() {
   // This is the actual crash-recovery save — runs on every keystroke.
   // The autosave to Supabase runs on a 30s interval separately.
   useEffect(() => {
-    if (!content.trim()) return; // don't save empty content
+    // CHANGED: removed the early return on empty content.
+    // WHY: if the user completed mood-check and clicked "Start writing" but
+    // hasn't typed yet, scores exist but content is empty. The old guard
+    // skipped the save entirely, so on refresh scores were gone and the app
+    // reset to mood-check. Now we save whenever we're in writing phase OR
+    // there is actual content — whichever comes first.
+    if (step !== "writing" && !content.trim()) return;
 
     try {
       const draft: StoredDraft = {
@@ -268,6 +302,10 @@ export default function JournalPage() {
       setError(`Please write at least ${MIN_WORDS} words before submitting.`);
       return;
     }
+
+    // ADDED: freeze metrics immediately — captures them at this exact moment
+    // and stops the live interval before any network delay begins
+    setIsSubmitting(true);
 
     // Use what we captured at "Done writing" time.
     // Fallback to getComputedMetrics() for safety, but in practice
@@ -458,26 +496,10 @@ export default function JournalPage() {
 
             {/* canvas */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="px-6 pt-5 pb-0 space-y-4">
-                {/* title input */}
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={titlePlaceholder}
-                  maxLength={120}
-                  className={cn(
-                    "w-full text-xl md:text-2xl font-medium bg-transparent",
-                    "text-ink dark:text-[#F0EDE8]",
-                    "placeholder:text-ink-subtle dark:placeholder:text-[#444440]",
-                    "border-none outline-none focus:outline-none",
-                    "leading-tight"
-                  )}
-                />
-
+              <div className="px-6 pt-5 pb-0 space-y-4 shrink-0">
                 {/* energy selector */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-ink-subtle dark:text-[#555250]">Energy:</span>
+                  <span className="text-lg md:text-xl text-ink-subtle dark:text-[#555250]">Energy:</span>
                   {ENERGY_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -486,7 +508,7 @@ export default function JournalPage() {
                         energyLevel === opt.value ? null : opt.value
                       )}
                       className={cn(
-                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
+                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-sm md:text-md font-medium",
                         "border transition-all duration-150",
                         energyLevel === opt.value
                           ? "border-current bg-current/10"
@@ -499,6 +521,22 @@ export default function JournalPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* title input */}
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={titlePlaceholder}
+                  maxLength={120}
+                  className={cn(
+                    "w-full text-md md:text-lg font-medium bg-transparent pt-5",
+                    "text-ink dark:text-[#F0EDE8]",
+                    "placeholder:text-ink-subtle dark:placeholder:text-[#444440]",
+                    "border-none outline-none focus:outline-none",
+                    "leading-tight"
+                  )}
+                />
               </div>
 
               {/* divider */}
