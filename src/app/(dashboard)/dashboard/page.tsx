@@ -224,7 +224,7 @@ export default async function DashboardPage() {
       <PageHeader sessionCount={chartData.length} greeting={greeting} />
 
       {/* Stable Day + Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-4">
         <div className="md:col-span-1">
           <StableDayCard
             baselineMatch={baselineMatch}
@@ -232,7 +232,7 @@ export default async function DashboardPage() {
             sessionCount={chartData.length}
           />
         </div>
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2 mt-4 lg:mt-0">
           <SummaryCards
             totalSessions={chartData.length}
             avgMood={avgMood}
@@ -276,7 +276,7 @@ export default async function DashboardPage() {
       />
 
       {/* Correlation scatter plots */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <CorrelationScatter
           title="Stress vs typing speed"
           xLabel="WPM"

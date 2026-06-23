@@ -46,7 +46,7 @@ export function TrendChart({
   height = 240,
 }: TrendChartProps) {
   return (
-    <Card>
+    <Card className="p-0 md:p-6">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
@@ -88,12 +88,23 @@ export function TrendChart({
                 axisLine={false}
               />
               <YAxis
-                domain={yDomain ?? ["auto", "auto"]}
+                // CHANGED: was ["auto", "auto"] — that let Recharts pick arbitrary
+                // tick values outside the data range, causing the 0→7→4→1 ordering.
+                // [0, "auto"] anchors the floor at 0 for count data (pauses, WPM).
+                // For mood/stress the caller passes yDomain={[1, 10]} which overrides this.
+                // WHY: "auto" on both ends causes Recharts to sometimes reverse or
+                // scatter ticks when data is sparse.
+                domain={yDomain ?? [0, "auto"]}
                 stroke="currentColor"
                 fontSize={11}
                 tickLine={false}
                 axisLine={false}
                 width={32}
+                // ADDED: tickCount forces evenly spaced ticks (5 is the sweet spot
+                // for chart heights we're using — not too crowded, not too sparse)
+                tickCount={5}
+                // ADDED: no 7.5-style decimals on count data (pauses, WPM, corrections)
+                allowDecimals={false}
               />
 
               <Tooltip content={<ChartTooltip lines={lines} />} />

@@ -70,7 +70,7 @@ function generateInsight(xKey: string, yKey: string, r: number | null, n: number
  */
 export function InsightsPanel({ pairs, sessionCount }: InsightsPanelProps) {
   return (
-    <Card>
+    <Card className="p-0 md:p-6">
       <CardHeader>
         <CardTitle>Personal trends</CardTitle>
         <CardDescription>

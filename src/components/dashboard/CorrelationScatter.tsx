@@ -40,7 +40,7 @@ export function CorrelationScatter({
   const hasEnoughData = points.length >= minPoints;
 
   return (
-    <Card>
+    <Card className="p-0 md:p-6">
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <div>

@@ -26,7 +26,7 @@ export function SummaryCards({
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-3 h-full">
       {stats.map((stat) => (
         <Card key={stat.label} className="p-4">
           <p className="text-xs font-medium text-ink-subtle dark:text-[#555250] uppercase tracking-wide mb-1">
