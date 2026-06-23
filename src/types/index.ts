@@ -51,12 +51,17 @@ export interface JournalingSession {
   id: string;
   user_id: string;
   content: string;
+  title: string | null;           // ADDED
+  energy_level: string | null;    // ADDED: 'heavy' | 'muted' | 'calm' | 'wired'
   word_count: number;
   duration_secs: number;
   status: "draft" | "submitted";
   started_at: string;
   submitted_at: string | null;
 }
+
+// ADDED: energy level union type
+export type EnergyLevel = "heavy" | "muted" | "calm" | "wired";
 
 export interface KeystrokeMetrics {
   id: string;
