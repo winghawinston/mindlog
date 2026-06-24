@@ -25,6 +25,9 @@ export const metadata: Metadata = {
     template: "%s · Cadence",
   },
   description: "A private journaling space that mirrors your inner peace by listening to the rhythm of your hands.",
+  icons:{
+    icon: "/cadence.svg",
+  },
   // PWA manifest — I'll add this later
   manifest: "/manifest.json",
 };
