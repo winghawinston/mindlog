@@ -381,7 +381,7 @@ export default function JournalPage() {
             {/* ── top bar ───────────────────────────────────────  */}
             <header
               className={cn(
-                "flex items-center justify-between px-6 py-4 shrink-0",
+                "flex items-center justify-between px-6 py-3 shrink-0",
                 "border-b border-parchment dark:border-dark-border",
                 "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm",
               )}
@@ -449,7 +449,7 @@ export default function JournalPage() {
             {/* Header — fades to near-invisible when textarea is focused */}
             <header
               className={cn(
-                "flex items-center justify-between px-6 py-3 shrink-0",
+                "flex items-center justify-between px-6 py-6 shrink-0",
                 "border-b border-parchment dark:border-dark-border",
                 "bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm",
                 "transition-opacity duration-500",
